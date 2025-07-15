@@ -25,7 +25,8 @@ The example datasets for the Rubik's Cube and Sokoban are stored in `example_dat
 ```bash
     sudo apt-get update
     sudo apt-get install git-lfs
-    git lfs install```
+    git lfs install
+```
 
 
 ### Rubik's Cube
