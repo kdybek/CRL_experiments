@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 from datasets.utils import tokenize_pair
 from datasets.utils import DataLoader
+from datasets.contrastive_diff_len import ContrastiveDatasetDiffLen
 from search.value_function import ValueEstimator
 from search.solve_job import SolveJob
 
@@ -27,19 +28,19 @@ class TrainJob():
         loggers,
         train_steps,
         batch_size,
-        dataset_class,
         lr,
         model_type,
         metric,
         search_shuffles,
         output_dir,
+        train_path,
+        test_path,
         n_test_traj=100,
         do_eval=True,
         solving_interval=None,
         tokenizer=tokenize_pair,
         eval_job_class=None,
         checkpoint_path=None,
-        test_path=None,
     ):
         self.loggers = loggers
         self.train_steps = train_steps
@@ -47,6 +48,9 @@ class TrainJob():
         self.checkpoint_path = checkpoint_path
         self.model = model_type().to(self.device)
         self.solving_interval = solving_interval
+        self.train_path = train_path
+        self.test_path = test_path
+        self.n_test_traj = n_test_traj
 
         self.batch_size = batch_size
         self.lr = lr
@@ -58,22 +62,6 @@ class TrainJob():
 
         if self.checkpoint_path is not None:
             self.read_checkpoint(self.checkpoint_path)
-
-        self.dataset = dataset_class(device=self.device)
-
-        self.train_dataloader = DataLoader(
-            self.dataset, batch_size=self.batch_size, split='train')
-
-        if test_path is None:
-            self.test_dataloader = DataLoader(
-                self.dataset, batch_size=self.batch_size, split='test')
-        else:
-            self.test_dataset = dataset_class(path=test_path, device=self.device)
-            self.test_dataloader = DataLoader(
-                self.test_dataset, batch_size=self.batch_size, split='train')
-
-        self.test_trajectories = [self.dataset._get_trajectory()
-                                  for _ in range(n_test_traj)]
 
         self.search_shuffles = search_shuffles
 
@@ -109,7 +97,7 @@ class TrainJob():
         self.loggers.log_figure(f'avg distances solved', 0, plt.gcf())
         plt.clf()
 
-    def gen_plot_0(self):
+    def gen_plot_0(self, test_trajectories):
         TRAJECTORIES_TO_ANALYSE = 20
         last_n = 10
 
@@ -117,7 +105,7 @@ class TrainJob():
         trajectory_labels = []
 
         for i in range(TRAJECTORIES_TO_ANALYSE):
-            trajectory = self.test_trajectories[i]
+            trajectory = test_trajectories[i]
             trajectory = trajectory.reshape(trajectory.shape[0], -1)
             trajectory = trajectory[:min(len(trajectory), last_n)]
             embeddings_double = self.model(trajectory).detach().cpu().numpy()
@@ -146,8 +134,8 @@ class TrainJob():
         self.loggers.log_figure("t-sne reps", 0, plt.gcf())
         plt.clf()
 
-    def gen_plot_1(self):
-        for traj in self.test_trajectories:
+    def gen_plot_1(self, test_trajectories):
+        for traj in test_trajectories:
             with torch.no_grad():
                 traj = traj.to(self.device)
                 psi = self.model(traj)
@@ -167,8 +155,8 @@ class TrainJob():
         self.loggers.log_figure("All reps", 0, plt.gcf())
         plt.clf()
 
-    def gen_plot_2(self):
-        for i, s in enumerate(self.test_trajectories):
+    def gen_plot_2(self, test_trajectories):
+        for i, s in enumerate(test_trajectories):
             if i == 4:
                 break
 
@@ -206,10 +194,10 @@ class TrainJob():
             self.loggers.log_figure(f'plot {i}', 0, plt.gcf())
             plt.clf()
 
-    def gen_plot_monotonicity(self):
+    def gen_plot_monotonicity(self, test_trajectories):
         value_estimator = ValueEstimator(self.model, self.metric)
         correlations = []
-        for i, s in enumerate(self.test_trajectories):
+        for i, s in enumerate(test_trajectories):
             s = s.to(self.device)
             distances = value_estimator.get_solved_distance_batch(s, s[-1]).to('cpu')
             s = s.to('cpu')
@@ -227,6 +215,26 @@ class TrainJob():
                 plt.clf()
 
         self.loggers.log_scalar('correlation', 0, sum(correlations)/len(correlations))
+
+
+@gin.configurable
+class TrainJobCRTR(TrainJob):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def init_dataloader(self):
+        self.dataset = ContrastiveDatasetDiffLen(path=self.train_path, device=self.device)
+
+        self.train_dataloader = DataLoader(
+            self.dataset, batch_size=self.batch_size, split='train')
+
+        self.test_dataset = ContrastiveDatasetDiffLen(path=self.test_path, device=self.device)
+        self.test_dataloader = DataLoader(
+            self.test_dataset, batch_size=self.batch_size, split='train')
+
+        self.test_trajectories = [self.dataset._get_trajectory()
+                                  for _ in range(self.n_test_traj)]
+
 
     def execute(self):
         seen = 0
@@ -252,12 +260,12 @@ class TrainJob():
 
                     self.loggers.log_scalar('step', t, t)
 
-                if (seen // len(data)) % 1000 == 0:
+                if (seen // len(data)) % 10000 == 0:
                     with torch.no_grad():
-                        self.gen_plot_monotonicity()
-                        self.gen_plot_0()
-                        self.gen_plot_1()
-                        self.gen_plot_2()
+                        self.gen_plot_monotonicity(test_trajectories=self.test_trajectories)
+                        self.gen_plot_0(test_trajectories=self.test_trajectories)
+                        self.gen_plot_1(test_trajectories=self.test_trajectories)
+                        self.gen_plot_2(test_trajectories=self.test_trajectories)
 
                         for shuffles in self.search_shuffles:
                             eval_job = SolveJob(

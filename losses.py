@@ -3,6 +3,21 @@ import gin
 import torch.nn as nn
 
 
+def contrastive_loss_same_trajectories(psi_0, psi_T, psi_R):
+        temp = psi_0.shape[1]**(1/2)
+
+        positive_pairs = -torch.norm(psi_0 - psi_T, p=2, dim=1) / temp
+        negative_pairs = -torch.norm(psi_0.unsqueeze(1) - psi_R, p=2, dim=2) / temp
+        all_pairs = torch.cat([positive_pairs.unsqueeze(1), negative_pairs], dim=1)
+
+        all_pairs = all_pairs - all_pairs.max(dim=1, keepdim=True)[0]
+        positive_pairs = all_pairs[:, 0]
+        denominators = torch.logsumexp(all_pairs, dim=1)
+        loss = -positive_pairs + denominators
+
+        return loss.mean()
+
+
 @gin.configurable
 def contrastive_loss(psi_0, psi_T,  distance_fun, normalize=False, tau=None, exclude_diagonal=False, eps=10e-8, loss_type='backward'):
     if normalize:

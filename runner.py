@@ -53,6 +53,7 @@ def run(job_class, seed, output_dir):
         output_dir=output_dir
     )
 
+    job.init_dataloader()
     job.execute()
 
 
