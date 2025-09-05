@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from datasets.utils import tokenize_pair
 from datasets.utils import DataLoader
-from datasets.contrastive_diff_len import ContrastiveDatasetDiffLen
+from datasets.contrastive_diff_len import DatasetCRTR
 from search.value_function import ValueEstimator
 from search.solve_job import SolveJob
 
@@ -33,9 +33,6 @@ class TrainJob():
         metric,
         search_shuffles,
         output_dir,
-        train_path,
-        test_path,
-        n_test_traj=100,
         do_eval=True,
         solving_interval=None,
         tokenizer=tokenize_pair,
@@ -48,9 +45,6 @@ class TrainJob():
         self.checkpoint_path = checkpoint_path
         self.model = model_type().to(self.device)
         self.solving_interval = solving_interval
-        self.train_path = train_path
-        self.test_path = test_path
-        self.n_test_traj = n_test_traj
 
         self.batch_size = batch_size
         self.lr = lr
@@ -219,22 +213,19 @@ class TrainJob():
 
 @gin.configurable
 class TrainJobCRTR(TrainJob):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def init_dataloader(self):
-        self.dataset = ContrastiveDatasetDiffLen(path=self.train_path, device=self.device)
+    def __init__(self, train_path, test_path, n_test_traj, repetition_rate, **kwargs):
+        super().__init__(**kwargs)
+        self.dataset = DatasetCRTR(path=train_path, double_batch=repetition_rate, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size, split='train')
 
-        self.test_dataset = ContrastiveDatasetDiffLen(path=self.test_path, device=self.device)
+        self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
         self.test_dataloader = DataLoader(
             self.test_dataset, batch_size=self.batch_size, split='train')
 
         self.test_trajectories = [self.dataset._get_trajectory()
-                                  for _ in range(self.n_test_traj)]
-
+                                  for _ in range(n_test_traj)]
 
     def execute(self):
         seen = 0

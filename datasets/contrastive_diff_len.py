@@ -73,6 +73,21 @@ class ContrastiveDatasetDiffLen():
 
         return current_buffer, current_lens
 
+    def _get_trajectory(self):
+        traj, len = self._get_trajs(1)
+        traj = traj.squeeze()
+        traj = traj.flatten(1)
+        len = len.item()
+
+        traj = traj[:len]
+        return traj.to(self.device)
+
+
+@gin.configurable
+class DatasetCRTR(ContrastiveDatasetDiffLen):
+    def __init__(self, path, gamma=0.9, max_horizon=200, double_batch=1, device='cpu'):
+        super().__init__(path, gamma, max_horizon, double_batch, device)
+
     def _get_batch(self, batch_size, split='train'):
         if self.double_batch:
             trajs, lens = self._get_trajs(int(batch_size / self.double_batch))
@@ -128,12 +143,3 @@ class ContrastiveDatasetDiffLen():
             return result
         else:
             raise ValueError(f"Unexpected shape of trajs: {trajs.shape}")
-
-    def _get_trajectory(self):
-        traj, len = self._get_trajs(1)
-        traj = traj.squeeze()
-        traj = traj.flatten(1)
-        len = len.item()
-
-        traj = traj[:len]
-        return traj.to(self.device)

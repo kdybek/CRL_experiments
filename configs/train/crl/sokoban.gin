@@ -1,23 +1,23 @@
 run.seed = 0
-run.job_class = @TrainJob
-TrainJob.train_steps = 500000000
-TrainJob.batch_size = 512
-TrainJob.dataset_class = @ContrastiveDatasetDiffLen
-    ContrastiveDatasetDiffLen.double_batch = 1
-    ContrastiveDatasetDiffLen.path = 'example_datasets/sokoban'
+run.job_class = @TrainJobCRTR
+TrainJobCRTR.train_steps = 100000
+TrainJobCRTR.batch_size = 512
+TrainJobCRTR.repetition_rate = 1
 
-TrainJob.metric = 'l2'
-TrainJob.search_shuffles = [-1]
-TrainJob.lr = 3e-4
-TrainJob.solving_interval = 50000
-TrainJob.test_path = 'example_datasets/sokoban'
-TrainJob.model_type = @LNConvNet
+TrainJobCRTR.metric = 'l2'
+TrainJobCRTR.search_shuffles = [-1]
+TrainJobCRTR.lr = 3e-4
+TrainJobCRTR.solving_interval = 50000
+TrainJobCRTR.train_path = 'training_datasets/sokoban/train'
+TrainJobCRTR.test_path = 'training_datasets/sokoban/test'
+TrainJobCRTR.n_test_traj = 100
+TrainJobCRTR.model_type = @LNConvNet
     LNConvNet.input_size = 7
     LNConvNet.repr_dim = 64
     LNConvNet.hidden_size = 64
     LNConvNet.depth = 8
 
-TrainJob.eval_job_class = @SolveJob
+TrainJobCRTR.eval_job_class = @SolveJob
     SolveJob.solver_class = @BestFSSolver
         BestFSSolver.goal_builder_class = @TrivialPolicy
             TrivialPolicy.env = @CustomSokobanEnv
@@ -29,9 +29,9 @@ TrainJob.eval_job_class = @SolveJob
         BestFSSolver.max_tree_depth = -1
         BestFSSolver.value_estimator_class = @ValueEstimator
 
-    SolveJob.n_jobs = 200
-    SolveJob.n_parallel_workers = 1
-    SolveJob.batch_size = 200
+    SolveJob.n_jobs = 64
+    SolveJob.n_parallel_workers = 10
+    SolveJob.batch_size = 64
     SolveJob.budget_checkpoints = [50, 100, 500, 1000]
     SolveJob.generate_problems = @gen_problems_sokoban.generate_problems_sokoban
 

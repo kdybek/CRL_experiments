@@ -49,11 +49,10 @@ def run(job_class, seed, output_dir):
 
     loggers.log_property('seed', seed)
     job = job_class(
-        loggers,
+        loggers=loggers,
         output_dir=output_dir
     )
 
-    job.init_dataloader()
     job.execute()
 
 
