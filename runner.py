@@ -1,6 +1,6 @@
 import gin
 import argparse
-import torch 
+import torch
 
 from utils import metric_logging
 
@@ -30,6 +30,7 @@ import envs.sokoban.gen_problems_sokoban
 
 import envs.rubik.utils.rubik_solver_utils
 
+
 @gin.configurable
 def run(job_class, seed, output_dir):
     random.seed(seed)
@@ -43,7 +44,6 @@ def run(job_class, seed, output_dir):
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-    
     loggers = metric_logging.Loggers()
     loggers.register_logger(metric_logging.StdoutLogger(output_dir=output_dir))
 
@@ -55,24 +55,26 @@ def run(job_class, seed, output_dir):
 
     job.execute()
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_file", required=True, help="Path to the config file, e.g. 'configs/train/crl/rubik.gin'")
+    parser.add_argument("--config_file", required=True,
+                        help="Path to the config file, e.g. 'configs/train/crl/rubik.gin'")
     parser.add_argument(
-        "--gin_bindings",          
-        nargs='*',                  
-        default=[],                
-        metavar='BIND',            
+        "--gin_bindings",
+        nargs='*',
+        default=[],
+        metavar='BIND',
         help='Gin bindings like "run.seed=123" "train_job_baseline.lr=1e-4"'
-    )  
-    parser.add_argument("--output_dir", required=False, help="Path to the logging directory", default=f"results_{time.strftime('%Y%m%d_%H%M%S')}")
+    )
+    parser.add_argument("--output_dir", required=False, help="Path to the logging directory",
+                        default=f"results_{time.strftime('%Y%m%d_%H%M%S')}")
 
     args = parser.parse_args()
     gin.parse_config_files_and_bindings(
         config_files=[args.config_file],
         bindings=args.gin_bindings
-        )
-
+    )
 
     print("==== Final Config (after overrides) ====")
     config_str = gin.config_str()
@@ -85,5 +87,5 @@ if __name__ == "__main__":
         f.write("\n\n==== gin_bindings argument ====\n")
         for binding in args.gin_bindings:
             f.write(f"{binding}\n")
-    
+
     run(output_dir=args.output_dir)

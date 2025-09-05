@@ -1,0 +1,5 @@
+.venv
+training_datasets/
+__pycache__/
+results_*
+Contrastive_Representations_for_Temporal_Reasoning.egg-info/
