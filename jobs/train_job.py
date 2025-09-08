@@ -1,4 +1,4 @@
-from losses import contrastive_loss
+from losses import contrastive_loss, contrastive_loss_same_trajectories
 import sklearn.manifold
 import gin
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from datasets.utils import tokenize_pair
 from datasets.utils import DataLoader
-from datasets.contrastive_diff_len import DatasetCRTR
+from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajUnif
 from search.value_function import ValueEstimator
 from search.solve_job import SolveJob
 
@@ -215,14 +215,15 @@ class TrainJob():
 class TrainJobCRTR(TrainJob):
     def __init__(self, train_path, test_path, n_test_traj, repetition_rate, **kwargs):
         super().__init__(**kwargs)
-        self.dataset = DatasetCRTR(path=train_path, double_batch=repetition_rate, device=self.device)
+        self.dataset = DatasetCRTR(
+            path=train_path, double_batch=repetition_rate, device=self.device)
 
         self.train_dataloader = DataLoader(
-            self.dataset, batch_size=self.batch_size, split='train')
+            self.dataset, batch_size=self.batch_size)
 
         self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
         self.test_dataloader = DataLoader(
-            self.test_dataset, batch_size=self.batch_size, split='train')
+            self.test_dataset, batch_size=self.batch_size)
 
         self.test_trajectories = [self.dataset._get_trajectory()
                                   for _ in range(n_test_traj)]
@@ -234,8 +235,7 @@ class TrainJobCRTR(TrainJob):
                 self.model.train()
 
                 self.optimizer.zero_grad()
-                x0 = data[:, 0]
-                xT = data[:, 1]
+                x0, xT = data
                 psi_0 = self.model(x0)
                 psi_T = self.model(xT)
                 loss, self.metrics = contrastive_loss(
@@ -253,7 +253,74 @@ class TrainJobCRTR(TrainJob):
 
                 if (seen // len(data)) % 10000 == 0:
                     with torch.no_grad():
-                        self.gen_plot_monotonicity(test_trajectories=self.test_trajectories)
+                        self.gen_plot_monotonicity(
+                            test_trajectories=self.test_trajectories)
+                        self.gen_plot_0(test_trajectories=self.test_trajectories)
+                        self.gen_plot_1(test_trajectories=self.test_trajectories)
+                        self.gen_plot_2(test_trajectories=self.test_trajectories)
+
+                        for shuffles in self.search_shuffles:
+                            eval_job = SolveJob(
+                                loggers=self.loggers, network=self.model, metric=self.metric, shuffles=shuffles)
+                            eval_job.execute()
+                            break
+
+                            self.save_checkpoint(seen)
+
+                        self.model.to(self.device)
+
+                seen += len(data)
+                del data
+
+        self.save_checkpoint('final')
+
+
+@gin.configurable
+class TrainJobSameTraj(TrainJob):
+    def __init__(self, train_path, test_path, n_test_traj, repetition_rate, dist, **kwargs):
+        assert dist in ['unif']
+
+        super().__init__(**kwargs)
+        if dist == 'unif':
+            self.dataset = DatasetSameTrajUnif(path=train_path, device=self.device)
+
+        self.train_dataloader = DataLoader(
+            self.dataset, batch_size=self.batch_size)
+
+        self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
+        self.test_dataloader = DataLoader(
+            self.test_dataset, batch_size=self.batch_size)
+
+        self.test_trajectories = [self.dataset._get_trajectory()
+                                  for _ in range(n_test_traj)]
+
+    def execute(self):
+        seen = 0
+        while seen < self.train_steps:
+            for t, data in enumerate(self.train_dataloader):
+                self.model.train()
+
+                self.optimizer.zero_grad()
+                x0, xT, xR = data
+                psi_0 = self.model(x0)
+                psi_T = self.model(xT)
+                psi_R = self.model(xR)
+                loss, self.metrics = contrastive_loss_same_trajectories(psi_0, psi_T, psi_R)
+                loss.backward()
+
+                self.optimizer.step()
+
+                if (seen // len(data)) % 100 == 0:
+                    for name, value in self.metrics.items():
+                        print(name, t, value)
+                        self.loggers.log_scalar(name, t, value)
+
+                    self.loggers.log_scalar('step', t, t)
+
+                if (seen // len(data)) % 10000 == 0:
+                    with torch.no_grad():
+                        self.gen_plot_monotonicity(
+                            test_trajectories=self.test_trajectories)
                         self.gen_plot_0(test_trajectories=self.test_trajectories)
                         self.gen_plot_1(test_trajectories=self.test_trajectories)
                         self.gen_plot_2(test_trajectories=self.test_trajectories)

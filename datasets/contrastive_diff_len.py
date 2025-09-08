@@ -24,10 +24,7 @@ def get_dataset_stats(directory):
 
 @gin.configurable
 class ContrastiveDatasetDiffLen():
-    def __init__(self, path, gamma=0.9, max_horizon=200, double_batch=1, device='cpu'):
-        self.gamma = gamma
-        self.max_horizon = max_horizon
-
+    def __init__(self, path, device='cpu'):
         self.num_traj, self.file_paths = get_dataset_stats(path)
         self.path = path
 
@@ -38,8 +35,6 @@ class ContrastiveDatasetDiffLen():
         self.device = device
 
         assert device in ['cpu', 'cuda']
-
-        self.double_batch = double_batch
 
     def _read_next_file(self):
         self.file_ind = np.random.randint(len(self.file_paths))
@@ -86,60 +81,118 @@ class ContrastiveDatasetDiffLen():
 @gin.configurable
 class DatasetCRTR(ContrastiveDatasetDiffLen):
     def __init__(self, path, gamma=0.9, max_horizon=200, double_batch=1, device='cpu'):
-        super().__init__(path, gamma, max_horizon, double_batch, device)
+        super().__init__(path, device)
+        self.gamma = gamma
+        self.max_horizon = max_horizon
+        self.double_batch = double_batch
 
-    def _get_batch(self, batch_size, split='train'):
-        if self.double_batch:
-            trajs, lens = self._get_trajs(int(batch_size / self.double_batch))
-            if len(trajs.shape) == 3:
-                trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1)[:batch_size]
-            elif len(trajs.shape) == 4:
-                trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1, 1)[:batch_size]
+    def _get_batch(self, batch_size):
+        with torch.no_grad():
+            if self.double_batch:
+                trajs, lens = self._get_trajs(int(batch_size / self.double_batch))
+
+                if len(trajs.shape) == 3:
+                    trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1)[:batch_size]
+                elif len(trajs.shape) == 4:
+                    trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1, 1)[:batch_size]
+
+                lens = lens.repeat(int(self.double_batch) + 1)[:batch_size]
             else:
-                raise ValueError(f"Unexpected shape of trajs: {trajs.shape}")
+                trajs, lens = self._get_trajs(batch_size)
 
-            lens = lens.repeat(int(self.double_batch) + 1)[:batch_size]
-        else:
+            assert len(trajs.shape) in [3, 4]
+            assert len(trajs) > 0
+            weights = torch.zeros((trajs.shape[0], trajs.shape[1]))
+            mask = torch.arange(len(trajs[0])).unsqueeze(
+                0).repeat(len(trajs), 1) < lens.unsqueeze(1).cpu()
+
+            weights[mask] = 1
+
+            i = torch.multinomial(weights.float(), num_samples=1).squeeze()
+
+            horizon = lens - i - 1
+
+            probs = self.gamma ** torch.arange(self.max_horizon).unsqueeze(
+                0).repeat(len(trajs), 1).float()
+
+            mask = torch.arange(self.max_horizon).repeat(
+                len(trajs), 1) <= horizon.unsqueeze(1)
+            probs *= mask.float()
+
+            probs /= probs.sum(dim=1, keepdim=True)
+
+            delta = torch.multinomial(probs, num_samples=1).squeeze()
+
+            states = trajs[torch.arange(len(trajs)), i]
+            goals = trajs[torch.arange(len(trajs)), i+delta]
+
+            if len(trajs.shape) == 4:
+                goals = goals.flatten(1)
+                states = states.flatten(1)
+
+            goals = goals.to(torch.float32).to(self.device)
+            states = states.to(torch.float32).to(self.device)
+
+        return states, goals
+
+
+@gin.configurable
+class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
+    def __init__(self, path, gamma=0.9, max_horizon=200, device='cpu'):
+        super().__init__(path, device)
+        self.gamma = gamma
+        self.max_horizon = max_horizon
+
+    def _get_batch(self, batch_size):
+        with torch.no_grad():
             trajs, lens = self._get_trajs(batch_size)
 
-        assert len(trajs) > 0
-        weights = torch.zeros((trajs.shape[0], trajs.shape[1]))
-        mask = torch.arange(len(trajs[0])).unsqueeze(
-            0).repeat(len(trajs), 1) < lens.unsqueeze(1).cpu()
-        mask_2 = torch.arange(len(trajs[0])).unsqueeze(0).repeat(
-            len(trajs), 1) < lens.unsqueeze(1).cpu() / 2
-        mask_3 = torch.arange(len(trajs[0])).unsqueeze(0).repeat(
-            len(trajs), 1) >= lens.unsqueeze(1).cpu() / 2
+            assert len(trajs.shape) in [3, 4]
+            assert len(trajs) > 0
+            weights = torch.zeros((trajs.shape[0], trajs.shape[1]))
+            mask = torch.arange(len(trajs[0])).unsqueeze(
+                0).repeat(len(trajs), 1) < lens.unsqueeze(1).cpu()
 
-        mask_2 = torch.logical_and(mask_2, mask)
-        mask_3 = torch.logical_and(mask_3, mask)
+            weights[mask] = 1
 
-        weights[mask] = 1
+            i = torch.multinomial(weights.float(), num_samples=1).squeeze()
 
-        i = torch.multinomial(weights.float(), num_samples=1).squeeze()
+            horizon = lens - i - 1
 
-        horizon = lens - i - 1
+            probs = self.gamma ** torch.arange(self.max_horizon).unsqueeze(
+                0).repeat(len(trajs), 1).float()
 
-        probs = self.gamma ** torch.arange(self.max_horizon).unsqueeze(
-            0).repeat(len(trajs), 1).float()
+            mask = torch.arange(self.max_horizon).repeat(
+                len(trajs), 1) <= horizon.unsqueeze(1)
+            probs *= mask.float()
 
-        mask = torch.arange(self.max_horizon).repeat(
-            len(trajs), 1) <= horizon.unsqueeze(1)
-        probs *= mask.float()
+            probs /= probs.sum(dim=1, keepdim=True)
 
-        probs /= probs.sum(dim=1, keepdim=True)
+            delta = torch.multinomial(probs, num_samples=1).squeeze()
 
-        delta = torch.multinomial(probs, num_samples=1).squeeze()
+            rand_ids = []
+            for j in range(batch_size):
+                rand_ids_i = torch.randint(
+                    low=0,
+                    high=lens[j].item(),  # trajectory-specific length
+                    size=(batch_size,)
+                )
+                rand_ids.append(rand_ids_i)
+            rand_ids = torch.stack(rand_ids, dim=0)
 
-        goals = trajs[torch.arange(len(trajs)), i+delta]
+            traj_ids = torch.arange(batch_size).unsqueeze(1).expand_as(rand_ids)
 
-        if len(trajs.shape) == 3:
-            # , trajs[:, i+delta, :])
-            return torch.concat((trajs[torch.arange(len(trajs)), i].unsqueeze(1), goals.unsqueeze(1)), axis=1).to(torch.float32).to(self.device)
-        elif len(trajs.shape) == 4:
-            result = torch.concat((trajs[torch.arange(len(trajs)), i].unsqueeze(1), goals.unsqueeze(
-                # , trajs[:, i+delta, :])
-                1)), axis=1).flatten(2, 3).to(torch.float32).to(self.device)
-            return result
-        else:
-            raise ValueError(f"Unexpected shape of trajs: {trajs.shape}")
+            states = trajs[torch.arange(len(trajs)), i]
+            goals = trajs[torch.arange(len(trajs)), i+delta]
+            random_states = trajs[traj_ids, rand_ids]
+
+            if len(trajs.shape) == 4:
+                goals = goals.flatten(1)
+                states = states.flatten(1)
+                random_states = random_states.flatten(2)
+
+            goals = goals.to(torch.float32).to(self.device)
+            states = states.to(torch.float32).to(self.device)
+            random_states = random_states.to(torch.float32).to(self.device)
+
+        return states, goals, random_states
