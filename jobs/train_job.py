@@ -34,7 +34,7 @@ class TrainJob():
         search_shuffles,
         output_dir,
         metric_log_interval=100,
-        test_interval=10000,
+        test_interval=50000,
         do_eval=True,
         tokenizer=tokenize_pair,
         eval_job_class=None,
@@ -250,8 +250,8 @@ class TrainJobCRTR(TrainJob):
                                   for _ in range(n_test_traj)]
 
     def execute(self):
-        step = 0
-        while step < self.train_steps:
+        step = 1
+        while step <= self.train_steps:
             for data in self.train_dataloader:
                 self.model.train()
 
@@ -276,7 +276,7 @@ class TrainJobCRTR(TrainJob):
                 del data
 
                 step += 1
-                if step >= self.train_steps:
+                if step > self.train_steps:
                     break
 
         self.save_checkpoint('final')
@@ -302,8 +302,8 @@ class TrainJobSameTraj(TrainJob):
                                   for _ in range(n_test_traj)]
 
     def execute(self):
-        step = 0
-        while step < self.train_steps:
+        step = 1
+        while step <= self.train_steps:
             for data in self.train_dataloader:
                 self.model.train()
 
@@ -318,8 +318,6 @@ class TrainJobSameTraj(TrainJob):
 
                 self.optimizer.step()
 
-                self.optimizer.step()
-
                 if step % self.metric_log_interval == 0:
                     self.log_metrics(step)
                     self.loggers.log_scalar('step', step, step)
@@ -331,7 +329,7 @@ class TrainJobSameTraj(TrainJob):
                 del data
 
                 step += 1
-                if step >= self.train_steps:
+                if step > self.train_steps:
                     break
 
         self.save_checkpoint('final')

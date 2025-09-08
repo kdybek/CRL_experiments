@@ -1,8 +1,8 @@
 run.seed = 0
 run.job_class = @TrainJobSameTraj
 TrainJobSameTraj.dist = 'unif'
-TrainJobSameTraj.train_steps = 100000
-TrainJobSameTraj.batch_size = 16
+TrainJobSameTraj.train_steps = 50000
+TrainJobSameTraj.batch_size = 32
 TrainJobSameTraj.repetition_rate = 2
 
 TrainJobSameTraj.metric = 'l2'
@@ -29,9 +29,9 @@ TrainJobSameTraj.eval_job_class = @SolveJob
         BestFSSolver.max_tree_depth = -1
         BestFSSolver.value_estimator_class = @ValueEstimator
 
-    SolveJob.n_jobs = 64
+    SolveJob.n_jobs = 200
     SolveJob.n_parallel_workers = 10
-    SolveJob.batch_size = 64
+    SolveJob.batch_size = 200
     SolveJob.budget_checkpoints = [50, 100, 500, 1000]
     SolveJob.generate_problems = @gen_problems_sokoban.generate_problems_sokoban
 
