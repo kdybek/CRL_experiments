@@ -7,7 +7,6 @@ TrainJobCRTR.repetition_rate = 1
 TrainJobCRTR.metric = 'l2'
 TrainJobCRTR.search_shuffles = [-1]
 TrainJobCRTR.lr = 3e-4
-TrainJobCRTR.solving_interval = 50000
 TrainJobCRTR.train_path = 'training_datasets/sokoban/train'
 TrainJobCRTR.test_path = 'training_datasets/sokoban/test'
 TrainJobCRTR.n_test_traj = 100

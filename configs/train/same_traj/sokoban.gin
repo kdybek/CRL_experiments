@@ -8,7 +8,6 @@ TrainJobSameTraj.repetition_rate = 2
 TrainJobSameTraj.metric = 'l2'
 TrainJobSameTraj.search_shuffles = [-1]
 TrainJobSameTraj.lr = 3e-4
-TrainJobSameTraj.solving_interval = 50000
 TrainJobSameTraj.train_path = 'training_datasets/sokoban/train'
 TrainJobSameTraj.test_path = 'training_datasets/sokoban/test'
 TrainJobSameTraj.n_test_traj = 100
