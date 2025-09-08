@@ -33,8 +33,9 @@ class TrainJob():
         metric,
         search_shuffles,
         output_dir,
+        metric_log_interval=100,
+        test_interval=10000,
         do_eval=True,
-        solving_interval=None,
         tokenizer=tokenize_pair,
         eval_job_class=None,
         checkpoint_path=None,
@@ -44,7 +45,8 @@ class TrainJob():
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.checkpoint_path = checkpoint_path
         self.model = model_type().to(self.device)
-        self.solving_interval = solving_interval
+        self.metric_log_interval = metric_log_interval
+        self.test_interval = test_interval
 
         self.batch_size = batch_size
         self.lr = lr
@@ -58,6 +60,7 @@ class TrainJob():
             self.read_checkpoint(self.checkpoint_path)
 
         self.search_shuffles = search_shuffles
+        self.model.to(self.device)
 
     def save_checkpoint(self, step):
         model_checkpoint_path = f"{self.output_dir}/{step}/model.pt"
@@ -210,6 +213,24 @@ class TrainJob():
 
         self.loggers.log_scalar('correlation', 0, sum(correlations)/len(correlations))
 
+    def log_metrics(self, step):
+        for name, value in self.metrics.items():
+            self.loggers.log_scalar(name, step, value)
+
+    def test_and_log(self, step):
+        with torch.no_grad():
+            self.gen_plot_monotonicity(
+                test_trajectories=self.test_trajectories)
+            self.gen_plot_0(test_trajectories=self.test_trajectories)
+            self.gen_plot_1(test_trajectories=self.test_trajectories)
+            self.gen_plot_2(test_trajectories=self.test_trajectories)
+
+            for shuffles in self.search_shuffles:
+                eval_job = SolveJob(
+                    loggers=self.loggers, network=self.model, metric=self.metric, shuffles=shuffles)
+                eval_job.execute()
+                break
+
 
 @gin.configurable
 class TrainJobCRTR(TrainJob):
@@ -229,9 +250,9 @@ class TrainJobCRTR(TrainJob):
                                   for _ in range(n_test_traj)]
 
     def execute(self):
-        seen = 0
-        while seen < self.train_steps:
-            for t, data in enumerate(self.train_dataloader):
+        step = 0
+        while step < self.train_steps:
+            for data in self.train_dataloader:
                 self.model.train()
 
                 self.optimizer.zero_grad()
@@ -244,33 +265,19 @@ class TrainJobCRTR(TrainJob):
 
                 self.optimizer.step()
 
-                if (seen // len(data)) % 100 == 0:
-                    for name, value in self.metrics.items():
-                        print(name, t, value)
-                        self.loggers.log_scalar(name, t, value)
+                if step % self.metric_log_interval == 0:
+                    self.log_metrics(step)
+                    self.loggers.log_scalar('step', step, step)
 
-                    self.loggers.log_scalar('step', t, t)
+                if step % self.test_interval == 0:
+                    self.test_and_log(step)
+                    self.save_checkpoint(step)
 
-                if (seen // len(data)) % 10000 == 0:
-                    with torch.no_grad():
-                        self.gen_plot_monotonicity(
-                            test_trajectories=self.test_trajectories)
-                        self.gen_plot_0(test_trajectories=self.test_trajectories)
-                        self.gen_plot_1(test_trajectories=self.test_trajectories)
-                        self.gen_plot_2(test_trajectories=self.test_trajectories)
-
-                        for shuffles in self.search_shuffles:
-                            eval_job = SolveJob(
-                                loggers=self.loggers, network=self.model, metric=self.metric, shuffles=shuffles)
-                            eval_job.execute()
-                            break
-
-                            self.save_checkpoint(seen)
-
-                        self.model.to(self.device)
-
-                seen += len(data)
                 del data
+
+                step += 1
+                if step >= self.train_steps:
+                    break
 
         self.save_checkpoint('final')
 
@@ -295,9 +302,9 @@ class TrainJobSameTraj(TrainJob):
                                   for _ in range(n_test_traj)]
 
     def execute(self):
-        seen = 0
-        while seen < self.train_steps:
-            for t, data in enumerate(self.train_dataloader):
+        step = 0
+        while step < self.train_steps:
+            for data in self.train_dataloader:
                 self.model.train()
 
                 self.optimizer.zero_grad()
@@ -305,37 +312,26 @@ class TrainJobSameTraj(TrainJob):
                 psi_0 = self.model(x0)
                 psi_T = self.model(xT)
                 psi_R = self.model(xR)
-                loss, self.metrics = contrastive_loss_same_trajectories(psi_0, psi_T, psi_R)
+                loss, self.metrics = contrastive_loss_same_trajectories(
+                    psi_0, psi_T, psi_R)
                 loss.backward()
 
                 self.optimizer.step()
 
-                if (seen // len(data)) % 100 == 0:
-                    for name, value in self.metrics.items():
-                        print(name, t, value)
-                        self.loggers.log_scalar(name, t, value)
+                self.optimizer.step()
 
-                    self.loggers.log_scalar('step', t, t)
+                if step % self.metric_log_interval == 0:
+                    self.log_metrics(step)
+                    self.loggers.log_scalar('step', step, step)
 
-                if (seen // len(data)) % 10000 == 0:
-                    with torch.no_grad():
-                        self.gen_plot_monotonicity(
-                            test_trajectories=self.test_trajectories)
-                        self.gen_plot_0(test_trajectories=self.test_trajectories)
-                        self.gen_plot_1(test_trajectories=self.test_trajectories)
-                        self.gen_plot_2(test_trajectories=self.test_trajectories)
+                if step % self.test_interval == 0:
+                    self.test_and_log(step)
+                    self.save_checkpoint(step)
 
-                        for shuffles in self.search_shuffles:
-                            eval_job = SolveJob(
-                                loggers=self.loggers, network=self.model, metric=self.metric, shuffles=shuffles)
-                            eval_job.execute()
-                            break
-
-                            self.save_checkpoint(seen)
-
-                        self.model.to(self.device)
-
-                seen += len(data)
                 del data
+
+                step += 1
+                if step >= self.train_steps:
+                    break
 
         self.save_checkpoint('final')
