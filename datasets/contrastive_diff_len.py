@@ -139,7 +139,7 @@ class DatasetCRTR(ContrastiveDatasetDiffLen):
 
 @gin.configurable
 class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.9, gamma_negative=0.9, n_negatives=4, device='cpu'):
+    def __init__(self, path, gamma=0.9, gamma_negative=0.4, n_negatives=32, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.gamma_negative = gamma_negative
@@ -186,18 +186,25 @@ class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
                 total_count=self.n_negatives, probs=p_start
             ).sample().to(torch.long).to(self.device)  # use long for indexing
 
-            offset_from_start = torch.multinomial(
-                probs, self.n_negatives, replacement=True)  # (B, n_negatives)
-            offset_from_end = torch.multinomial(
-                probs, self.n_negatives, replacement=True)  # (B, n_negatives)
+            maximal_offsets_neg = lens - 1  # shape (B,)
+            maximal_len_neg = int(max(maximal_offsets_neg).item())
+            powers_neg = torch.arange(maximal_len_neg + 1, device=self.device)
+            gamma_powers_neg = self.gamma_negative ** powers_neg
 
-            id_start = offset_from_start
-            id_end = lens.unsqueeze(1) - 1 - offset_from_end
+            mask_neg = powers_neg.unsqueeze(0) <= maximal_offsets_neg.unsqueeze(1)
+            probs_neg = gamma_powers_neg.unsqueeze(0).expand(batch_size, -1) * mask_neg
+            probs_neg = probs_neg / probs_neg.sum(dim=1, keepdim=True)
 
-            mask = torch.arange(self.n_negatives, device=self.device).unsqueeze(0)
-            mask = mask < how_many_biased_toward_start.unsqueeze(1)
+            negatives_offset = torch.multinomial(
+                probs_neg, self.n_negatives, replacement=True)  # (B, n_negatives)
 
-            rand_inds = torch.where(mask, id_start, id_end)
+            id_start = negatives_offset
+            id_end = lens.unsqueeze(1) - 1 - negatives_offset
+
+            mask_neg_2 = torch.arange(self.n_negatives, device=self.device).unsqueeze(0)
+            mask_neg_2 = mask_neg_2 < how_many_biased_toward_start.unsqueeze(1)
+
+            rand_inds = torch.where(mask_neg_2, id_start, id_end)
 
             random_states = trajs[batch_indices.unsqueeze(1), rand_inds]  # (B, n_negatives, D)
 
