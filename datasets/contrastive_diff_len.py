@@ -94,7 +94,8 @@ class DatasetCRTR(ContrastiveDatasetDiffLen):
                 if len(trajs.shape) == 3:
                     trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1)[:batch_size]
                 elif len(trajs.shape) == 4:
-                    trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1, 1)[:batch_size]
+                    trajs = trajs.repeat(int(self.double_batch) +
+                                         1, 1, 1, 1)[:batch_size]
 
                 lens = lens.repeat(int(self.double_batch) + 1)[:batch_size]
             else:
@@ -137,11 +138,12 @@ class DatasetCRTR(ContrastiveDatasetDiffLen):
 
 
 @gin.configurable
-class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.9, max_horizon=200, device='cpu'):
+class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
+    def __init__(self, path, gamma=0.9, gamma_negative=0.9, n_negatives=4, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
-        self.max_horizon = max_horizon
+        self.gamma_negative = gamma_negative
+        self.n_negatives = n_negatives
 
     def _get_batch(self, batch_size):
         with torch.no_grad():
@@ -149,50 +151,63 @@ class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
 
             assert len(trajs.shape) in [3, 4]
             assert len(trajs) > 0
-            weights = torch.zeros((trajs.shape[0], trajs.shape[1]))
-            mask = torch.arange(len(trajs[0])).unsqueeze(
-                0).repeat(len(trajs), 1) < lens.unsqueeze(1).cpu()
 
-            weights[mask] = 1
+            trajs = trajs.to(self.device)
+            lens = lens.to(self.device)
 
-            i = torch.multinomial(weights.float(), num_samples=1).squeeze()
+            # ----- Sample state1 -----
+            rand_vals1 = torch.rand(batch_size, device=self.device)
+            id1 = (rand_vals1 * lens).floor().to(torch.int32)
 
-            horizon = lens - i - 1
+            # ----- Sample state2 (gamma-discounted offset from state1) -----
+            maximal_offsets = lens - id1 - 1  # shape (B,)
+            maximal_len = int(max(maximal_offsets).item())
+            powers = torch.arange(maximal_len + 1, device=self.device)
+            gamma_powers = self.gamma ** powers
 
-            probs = self.gamma ** torch.arange(self.max_horizon).unsqueeze(
-                0).repeat(len(trajs), 1).float()
+            mask = powers.unsqueeze(0) <= maximal_offsets.unsqueeze(1)
+            probs = gamma_powers.unsqueeze(0).expand(batch_size, -1) * mask
+            probs = probs / probs.sum(dim=1, keepdim=True)
 
-            mask = torch.arange(self.max_horizon).repeat(
-                len(trajs), 1) <= horizon.unsqueeze(1)
-            probs *= mask.float()
+            offset = torch.multinomial(probs, 1).squeeze(1)
+            id2 = id1 + offset
 
-            probs /= probs.sum(dim=1, keepdim=True)
+            batch_indices = torch.arange(batch_size, device=self.device)
+            states = trajs[batch_indices, id1]  # (B, D)
+            goals = trajs[batch_indices, id2]  # (B, D)
 
-            delta = torch.multinomial(probs, num_samples=1).squeeze()
+            # ----- Decide how many to sample from start vs. end -----
+            before_id1 = id1 + 1             # states 0 ... id1[i]
+            after_id1 = lens - id1  # states id1[i] ... end
 
-            rand_ids = []
-            for j in range(batch_size):
-                rand_ids_i = torch.randint(
-                    low=0,
-                    high=lens[j].item(),  # trajectory-specific length
-                    size=(batch_size,)
-                )
-                rand_ids.append(rand_ids_i)
-            rand_ids = torch.stack(rand_ids, dim=0)
+            p_start = before_id1 / (before_id1 + after_id1)
 
-            traj_ids = torch.arange(batch_size).unsqueeze(1).expand_as(rand_ids)
+            how_many_biased_toward_start = torch.distributions.Binomial(
+                total_count=self.n_negatives, probs=p_start
+            ).sample().to(torch.long).to(self.device)  # use long for indexing
 
-            states = trajs[torch.arange(len(trajs)), i]
-            goals = trajs[torch.arange(len(trajs)), i+delta]
-            random_states = trajs[traj_ids, rand_ids]
+            offset_from_start = torch.multinomial(
+                probs, self.n_negatives, replacement=True)  # (B, n_negatives)
+            offset_from_end = torch.multinomial(
+                probs, self.n_negatives, replacement=True)  # (B, n_negatives)
+
+            id_start = offset_from_start
+            id_end = lens.unsqueeze(1) - 1 - offset_from_end
+
+            mask = torch.arange(self.n_negatives, device=self.device).unsqueeze(0)
+            mask = mask < how_many_biased_toward_start.unsqueeze(1)
+
+            rand_inds = torch.where(mask, id_start, id_end)
+
+            random_states = trajs[batch_indices.unsqueeze(1), rand_inds]  # (B, n_negatives, D)
 
             if len(trajs.shape) == 4:
-                goals = goals.flatten(1)
                 states = states.flatten(1)
+                goals = goals.flatten(1)
                 random_states = random_states.flatten(2)
 
-            goals = goals.to(torch.float32).to(self.device)
             states = states.to(torch.float32).to(self.device)
+            goals = goals.to(torch.float32).to(self.device)
             random_states = random_states.to(torch.float32).to(self.device)
 
         return states, goals, random_states
