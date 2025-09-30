@@ -1,7 +1,9 @@
 run.seed = 0
 run.job_class = @TrainJobSameTraj
 TrainJobSameTraj.train_steps = 50000
-TrainJobSameTraj.batch_size = 128
+TrainJobSameTraj.test_interval = 50000
+TrainJobSameTraj.batch_size = 512
+TrainJobSameTraj.dist = 'inv_geom'
 
 TrainJobSameTraj.metric = 'l2'
 TrainJobSameTraj.search_shuffles = [-1]

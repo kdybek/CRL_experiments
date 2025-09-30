@@ -206,7 +206,73 @@ class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
 
             rand_inds = torch.where(mask_neg_2, id_start, id_end)
 
-            random_states = trajs[batch_indices.unsqueeze(1), rand_inds]  # (B, n_negatives, D)
+            random_states = trajs[batch_indices.unsqueeze(
+                1), rand_inds]  # (B, n_negatives, D)
+
+            if len(trajs.shape) == 4:
+                states = states.flatten(1)
+                goals = goals.flatten(1)
+                random_states = random_states.flatten(2)
+
+            states = states.to(torch.float32).to(self.device)
+            goals = goals.to(torch.float32).to(self.device)
+            random_states = random_states.to(torch.float32).to(self.device)
+
+        return states, goals, random_states
+
+
+@gin.configurable
+class DatasetSameTrajInvGeom(ContrastiveDatasetDiffLen):
+    def __init__(self, path, gamma=0.7, n_negatives=8, device='cpu'):
+        super().__init__(path, device)
+        self.gamma = gamma
+        self.n_negatives = n_negatives
+
+    def _get_batch(self, batch_size):
+        with torch.no_grad():
+            trajs, lens = self._get_trajs(batch_size)
+
+            assert len(trajs.shape) in [3, 4]
+            assert len(trajs) > 0
+
+            trajs = trajs.to(self.device)
+            lens = lens.to(self.device)
+
+            # ----- Sample state1 -----
+            rand_vals1 = torch.rand(batch_size, device=self.device)
+            id1 = (rand_vals1 * lens).floor().to(torch.int32)
+
+            # ----- Sample state2 (in this method I'm sampling state2 directly) -----
+            maximal_len = int(max(lens).item())
+            powers = torch.arange(maximal_len, device=self.device)
+            gamma_powers = self.gamma ** powers
+
+            mask = powers.unsqueeze(0) < lens.unsqueeze(1) and powers.unsqueeze(0) >= id1.unsqueeze(1)
+            probs = gamma_powers.unsqueeze(0).expand(batch_size, -1) * mask
+            probs = probs / probs.sum(dim=1, keepdim=True)
+
+            id2 = torch.multinomial(probs, 1).squeeze(1)
+
+            batch_indices = torch.arange(batch_size, device=self.device)
+            states = trajs[batch_indices, id1]  # (B, D)
+            goals = trajs[batch_indices, id2]  # (B, D)
+
+            probs_neg = (1.0 - probs) * mask
+            probs_neg = probs_neg / probs_neg.sum(dim=1, keepdim=True).clamp(min=1e-6)
+
+            row_sums = probs_neg.sum(dim=1, keepdim=True)
+            is_zero = row_sums == 0  # (B, 1) bool mask
+
+            fallback = torch.zeros_like(probs_neg)
+            fallback[:, 0] = 1.0
+
+            probs_neg = torch.where(is_zero, fallback, probs_neg)
+
+            rand_inds = torch.multinomial(
+                probs_neg, self.n_negatives, replacement=True)  # (B, n_negatives)
+
+            random_states = trajs[batch_indices.unsqueeze(
+                1), rand_inds]  # (B, n_negatives, D)
 
             if len(trajs.shape) == 4:
                 states = states.flatten(1)
