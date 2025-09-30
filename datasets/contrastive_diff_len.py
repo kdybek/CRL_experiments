@@ -257,7 +257,9 @@ class DatasetSameTrajInvGeom(ContrastiveDatasetDiffLen):
             states = trajs[batch_indices, id1]  # (B, D)
             goals = trajs[batch_indices, id2]  # (B, D)
 
-            probs_neg = (1.0 - probs) * mask
+            # ----- Sample negatives -----
+            mask_2 = powers.unsqueeze(0) < lens.unsqueeze(1)
+            probs_neg = (1.0 - probs) * mask_2
             probs_neg = probs_neg / probs_neg.sum(dim=1, keepdim=True).clamp(min=1e-6)
 
             row_sums = probs_neg.sum(dim=1, keepdim=True)
