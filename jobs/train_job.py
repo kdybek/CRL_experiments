@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from datasets.utils import tokenize_pair
 from datasets.utils import DataLoader
-from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajGeom, DatasetSameTrajInvGeom
+from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajGeom, DatasetSameTrajUnif
 from search.value_function import ValueEstimator
 from search.solve_job import SolveJob
 
@@ -285,13 +285,13 @@ class TrainJobCRTR(TrainJob):
 @gin.configurable
 class TrainJobSameTraj(TrainJob):
     def __init__(self, train_path, dist, test_path, n_test_traj, **kwargs):
-        assert dist in ['geom', 'inv_geom']
+        assert dist in ['geom', 'unif']
 
         super().__init__(**kwargs)
         if dist == 'geom':
             self.dataset = DatasetSameTrajGeom(path=train_path, device=self.device)
         else:
-            self.dataset = DatasetSameTrajInvGeom(path=train_path, device=self.device)
+            self.dataset = DatasetSameTrajUnif(path=train_path, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
