@@ -80,53 +80,54 @@ class ContrastiveDatasetDiffLen():
 
 @gin.configurable
 class DatasetCRTR(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.6, max_horizon=200, double_batch=1, device='cpu'):
+    def __init__(self, path, gamma=None, repetition_rate=1, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
-        self.max_horizon = max_horizon
-        self.double_batch = double_batch
+        self.repetition_rate = repetition_rate
 
     def _get_batch(self, batch_size):
         with torch.no_grad():
-            if self.double_batch:
-                trajs, lens = self._get_trajs(int(batch_size / self.double_batch))
+            trajs, lens = self._get_trajs(int(batch_size / self.repetition_rate))
 
-                if len(trajs.shape) == 3:
-                    trajs = trajs.repeat(int(self.double_batch) + 1, 1, 1)[:batch_size]
-                elif len(trajs.shape) == 4:
-                    trajs = trajs.repeat(int(self.double_batch) +
-                                         1, 1, 1, 1)[:batch_size]
+            if len(trajs.shape) == 3:
+                trajs = trajs.repeat(int(self.repetition_rate) + 1, 1, 1)[:batch_size]
+            elif len(trajs.shape) == 4:
+                trajs = trajs.repeat(int(self.repetition_rate) +
+                                     1, 1, 1, 1)[:batch_size]
 
-                lens = lens.repeat(int(self.double_batch) + 1)[:batch_size]
-            else:
-                trajs, lens = self._get_trajs(batch_size)
+            lens = lens.repeat(int(self.repetition_rate) + 1)[:batch_size]
 
             assert len(trajs.shape) in [3, 4]
             assert len(trajs) > 0
 
-            weights = torch.zeros((trajs.shape[0], trajs.shape[1]))
-            mask = torch.arange(len(trajs[0])).unsqueeze(
-                0).repeat(len(trajs), 1) < lens.unsqueeze(1).cpu()
+            trajs = trajs.to(self.device)
+            lens = lens.to(self.device)
 
-            weights[mask] = 1
+            # ----- Sample state1 -----
+            rand_vals1 = torch.rand(batch_size, device=self.device)
+            id1 = (rand_vals1 * lens).floor().to(torch.int32)
 
-            i = torch.multinomial(weights.float(), num_samples=1).squeeze()
+            # ----- Sample state2 (gamma-discounted offset from state1) -----
+            maximal_offsets = lens - id1 - 1  # shape (B,)
+            maximal_len = int(max(maximal_offsets).item())
+            powers = torch.arange(maximal_len + 1, device=self.device)
 
-            horizon = lens - i - 1
+            mask = powers.unsqueeze(0) <= maximal_offsets.unsqueeze(1)
 
-            probs = self.gamma ** torch.arange(self.max_horizon).unsqueeze(
-                0).repeat(len(trajs), 1).float()
+            if self.gamma:
+                gamma_powers = self.gamma ** powers
+                probs = gamma_powers.unsqueeze(0).expand(batch_size, -1) * mask
+                probs = probs / probs.sum(dim=1, keepdim=True)
 
-            mask = torch.arange(self.max_horizon).repeat(
-                len(trajs), 1) <= horizon.unsqueeze(1)
-            probs *= mask.float()
+                offset = torch.multinomial(probs, 1).squeeze(1)
+            else:
+                offset = (id1 < lens - 1).to(torch.int32)
 
-            probs /= probs.sum(dim=1, keepdim=True)
+            id2 = id1 + offset
 
-            delta = torch.multinomial(probs, num_samples=1).squeeze()
-
-            states = trajs[torch.arange(len(trajs)), i]
-            goals = trajs[torch.arange(len(trajs)), i+delta]
+            batch_indices = torch.arange(batch_size, device=self.device)
+            states = trajs[batch_indices, id1]  # (B, D)
+            goals = trajs[batch_indices, id2]  # (B, D)
 
             if len(trajs.shape) == 4:
                 goals = goals.flatten(1)
@@ -224,7 +225,7 @@ class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
 
 @gin.configurable
 class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.7, n_negatives=16, repetition_rate=16, device='cpu'):
+    def __init__(self, path, gamma=None, n_negatives=16, repetition_rate=16, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.n_negatives = n_negatives
@@ -256,13 +257,18 @@ class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
             maximal_offsets = lens - id1 - 1  # shape (B,)
             maximal_len = int(max(maximal_offsets).item())
             powers = torch.arange(maximal_len + 1, device=self.device)
-            gamma_powers = self.gamma ** powers
 
             mask = powers.unsqueeze(0) <= maximal_offsets.unsqueeze(1)
-            probs = gamma_powers.unsqueeze(0).expand(batch_size, -1) * mask
-            probs = probs / probs.sum(dim=1, keepdim=True)
 
-            offset = torch.multinomial(probs, 1).squeeze(1)
+            if self.gamma:
+                gamma_powers = self.gamma ** powers
+                probs = gamma_powers.unsqueeze(0).expand(batch_size, -1) * mask
+                probs = probs / probs.sum(dim=1, keepdim=True)
+
+                offset = torch.multinomial(probs, 1).squeeze(1)
+            else:
+                offset = (id1 < lens - 1).to(torch.int32)
+
             id2 = id1 + offset
 
             batch_indices = torch.arange(batch_size, device=self.device)

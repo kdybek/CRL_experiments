@@ -237,7 +237,7 @@ class TrainJobCRTR(TrainJob):
     def __init__(self, train_path, test_path, n_test_traj, repetition_rate, **kwargs):
         super().__init__(**kwargs)
         self.dataset = DatasetCRTR(
-            path=train_path, double_batch=repetition_rate, device=self.device)
+            path=train_path, repetition_rate=repetition_rate, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
