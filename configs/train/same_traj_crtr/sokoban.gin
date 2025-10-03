@@ -1,7 +1,7 @@
 run.seed = 0
 run.job_class = @TrainJobSameTrajCRTR
-TrainJobSameTrajCRTR.train_steps = 500000
-TrainJobSameTrajCRTR.test_interval = 50000
+TrainJobSameTrajCRTR.train_steps = 100000
+TrainJobSameTrajCRTR.test_interval = 100000
 TrainJobSameTrajCRTR.batch_size = 1
 
 TrainJobSameTrajCRTR.metric = 'l2'

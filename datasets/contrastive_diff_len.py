@@ -300,11 +300,24 @@ class DatasetSameTrajCRTR(ContrastiveDatasetDiffLen):
     def __init__(self, path, device='cpu'):
         super().__init__(path, device)
 
-    def _get_batch(self, batch_size):
+    def _get_batch(self, _):
         with torch.no_grad():
             trajs, lens = self._get_trajs(1)
 
-            if len(trajs.shape) == 4:
-                trajs = trajs.flatten(2)
+            assert len(trajs.shape) in [3, 4]
+            assert len(trajs) > 0
 
-        return trajs, lens
+            trajs = trajs.to(self.device)
+            lens = lens.to(self.device)
+
+            trajs = trajs.squeeze(0)
+            trajs = trajs[:lens[0]]
+            states = trajs[:-1]
+            goals = trajs[1:]
+
+            if len(trajs.shape) == 3:
+                states = states.flatten(1)
+                goals = goals.flatten(1)
+
+        return states, goals
+

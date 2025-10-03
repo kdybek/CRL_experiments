@@ -353,9 +353,9 @@ class TrainJobSameTrajCRTR(TrainJob):
         self.test_trajectories = [self.dataset._get_trajectory()
                                   for _ in range(n_test_traj)]
 
-    def _create_weight_matrix(self, size, gamma):
-        idx = torch.arange(size)
-        diff = idx.unsqueeze(0) - idx.unsqueeze(1)
+    def _create_weight_matrix(self, traj_len, gamma):
+        idx = torch.arange(traj_len - 1)
+        diff = idx.unsqueeze(0) - idx.unsqueeze(1) + 1
         abs_diff = torch.abs(diff)
         W = (1 / gamma) ** abs_diff
 
@@ -363,25 +363,27 @@ class TrainJobSameTrajCRTR(TrainJob):
 
     def execute(self):
         step = 1
+        big_loss = 0
         while step <= self.train_steps:
             for data in self.train_dataloader:
                 self.model.train()
 
                 self.optimizer.zero_grad()
-                trajs, lens = data
-                trajs = trajs.to(self.device)
-                trajs = trajs.squeeze(0)
-                trajs = trajs[:lens[0]]
-                states = trajs[:-1]
-                goals = trajs[1:]
+                states, goals = data
                 psi_0 = self.model(states)
                 psi_T = self.model(goals)
-                W = self._create_weight_matrix(lens[0] - 1, 0.9).to(self.device)
+                traj_len = states.shape[0] + 1
+                W = self._create_weight_matrix(traj_len, 0.9).to(self.device)
                 loss, self.metrics = contrastive_loss(
                     psi_0, psi_T, distance_fun=self.metric, weight_matrix=W)
-                loss.backward()
 
-                self.optimizer.step()
+                big_loss = big_loss + loss
+
+                if step % self.batch_size == 0:
+                    big_loss = big_loss / self.batch_size
+                    big_loss.backward()
+                    self.optimizer.step()
+                    big_loss = 0
 
                 if step % self.metric_log_interval == 0:
                     self.log_metrics(step)
