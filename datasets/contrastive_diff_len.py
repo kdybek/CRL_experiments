@@ -49,8 +49,8 @@ class ContrastiveDatasetDiffLen():
         with open(current_len_path, 'rb') as f:
             self.buffer_lens = joblib.load(f)
 
-        self.buffer = self.buffer[self.buffer_lens != 0]
-        self.buffer_lens = self.buffer_lens[self.buffer_lens != 0]
+        self.buffer = self.buffer[self.buffer_lens > 1]
+        self.buffer_lens = self.buffer_lens[self.buffer_lens > 1]
 
         permutation = np.random.permutation(len(self.buffer))
         self.buffer = self.buffer[permutation]
@@ -80,7 +80,7 @@ class ContrastiveDatasetDiffLen():
 
 @gin.configurable
 class DatasetCRTR(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=None, repetition_rate=1, device='cpu'):
+    def __init__(self, path, gamma=0.9, repetition_rate=1, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.repetition_rate = repetition_rate
@@ -293,3 +293,18 @@ class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
             random_states = random_states.to(torch.float32).to(self.device)
 
         return states, goals, random_states
+
+
+@gin.configurable
+class DatasetSameTrajCRTR(ContrastiveDatasetDiffLen):
+    def __init__(self, path, device='cpu'):
+        super().__init__(path, device)
+
+    def _get_batch(self, batch_size):
+        with torch.no_grad():
+            trajs, lens = self._get_trajs(1)
+
+            if len(trajs.shape) == 4:
+                trajs = trajs.flatten(2)
+
+        return trajs, lens

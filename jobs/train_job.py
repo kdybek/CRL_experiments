@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from datasets.utils import tokenize_pair
 from datasets.utils import DataLoader
-from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajGeom, DatasetSameTrajUnif
+from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajGeom, DatasetSameTrajUnif, DatasetSameTrajCRTR
 from search.value_function import ValueEstimator
 from search.solve_job import SolveJob
 
@@ -316,6 +316,69 @@ class TrainJobSameTraj(TrainJob):
                 psi_R = self.model(xR)
                 loss, self.metrics = contrastive_loss_same_trajectories(
                     psi_0, psi_T, psi_R)
+                loss.backward()
+
+                self.optimizer.step()
+
+                if step % self.metric_log_interval == 0:
+                    self.log_metrics(step)
+                    self.loggers.log_scalar('step', step, step)
+
+                if step % self.test_interval == 0:
+                    self.test_and_log(step)
+                    self.save_checkpoint(step)
+
+                del data
+
+                step += 1
+                if step > self.train_steps:
+                    break
+
+        self.save_checkpoint('final')
+
+
+@gin.configurable
+class TrainJobSameTrajCRTR(TrainJob):
+    def __init__(self, train_path, test_path, n_test_traj, **kwargs):
+        super().__init__(**kwargs)
+        self.dataset = DatasetSameTrajCRTR(path=train_path, device=self.device)
+
+        self.train_dataloader = DataLoader(
+            self.dataset, batch_size=self.batch_size)
+
+        self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
+        self.test_dataloader = DataLoader(
+            self.test_dataset, batch_size=self.batch_size)
+
+        self.test_trajectories = [self.dataset._get_trajectory()
+                                  for _ in range(n_test_traj)]
+
+    def _create_weight_matrix(self, size, gamma):
+        idx = torch.arange(size)
+        diff = idx.unsqueeze(0) - idx.unsqueeze(1)
+        abs_diff = torch.abs(diff)
+        W = (1 / gamma) ** abs_diff
+
+        return W
+
+    def execute(self):
+        step = 1
+        while step <= self.train_steps:
+            for data in self.train_dataloader:
+                self.model.train()
+
+                self.optimizer.zero_grad()
+                trajs, lens = data
+                trajs = trajs.to(self.device)
+                trajs = trajs.squeeze(0)
+                trajs = trajs[:lens[0]]
+                states = trajs[:-1]
+                goals = trajs[1:]
+                psi_0 = self.model(states)
+                psi_T = self.model(goals)
+                W = self._create_weight_matrix(lens[0] - 1, 0.9).to(self.device)
+                loss, self.metrics = contrastive_loss(
+                    psi_0, psi_T, distance_fun=self.metric, weight_matrix=W)
                 loss.backward()
 
                 self.optimizer.step()

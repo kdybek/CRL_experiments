@@ -23,7 +23,7 @@ def contrastive_loss_same_trajectories(psi_0, psi_T, psi_R):
 
 
 @gin.configurable
-def contrastive_loss(psi_0, psi_T,  distance_fun, normalize=False, tau=None, exclude_diagonal=False, eps=10e-8, loss_type='backward'):
+def contrastive_loss(psi_0, psi_T,  distance_fun, normalize=False, tau=None, exclude_diagonal=False, eps=10e-8, loss_type='backward', weight_matrix=None):
     if normalize:
         if distance_fun in ['l2', 'l22', 'dot']:
             psi_0 = nn.functional.normalize(psi_0, p=2, dim=1)
@@ -77,6 +77,9 @@ def contrastive_loss(psi_0, psi_T,  distance_fun, normalize=False, tau=None, exc
 
     else:
         raise ValueError()
+
+    if weight_matrix is not None:
+        pdist = pdist * weight_matrix
 
     if loss_type == 'symmetric':
         l_unif = (torch.logsumexp(-pdist, dim=1) +
