@@ -80,7 +80,7 @@ class ContrastiveDatasetDiffLen():
 
 @gin.configurable
 class DatasetCRTR(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.9, repetition_rate=1, device='cpu'):
+    def __init__(self, path, gamma=0.1, repetition_rate=1, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.repetition_rate = repetition_rate

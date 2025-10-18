@@ -368,19 +368,19 @@ class TrainJobSameTrajCRTR(TrainJob):
             for data in self.train_dataloader:
                 self.model.train()
 
-                self.optimizer.zero_grad()
                 states, goals = data
                 psi_0 = self.model(states)
                 psi_T = self.model(goals)
                 traj_len = states.shape[0] + 1
-                W = self._create_weight_matrix(traj_len, 0.9).to(self.device)
+                W = self._create_weight_matrix(traj_len, 0.99).to(self.device)
                 loss, self.metrics = contrastive_loss(
-                    psi_0, psi_T, distance_fun=self.metric, weight_matrix=W)
+                    psi_0, psi_T, distance_fun=self.metric, weight_matrix=None, dropout_rate=0.0)
 
                 big_loss = big_loss + loss
 
                 if step % self.batch_size == 0:
                     big_loss = big_loss / self.batch_size
+                    self.optimizer.zero_grad()
                     big_loss.backward()
                     self.optimizer.step()
                     big_loss = 0
