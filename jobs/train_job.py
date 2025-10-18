@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from datasets.utils import tokenize_pair
 from datasets.utils import DataLoader
-from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajGeom, DatasetSameTrajUnif, DatasetSameTrajCRTR
+from datasets.contrastive_diff_len import DatasetCRTR, DatasetSameTrajGeom, DatasetSameTrajUnif, DatasetOBBT
 from search.value_function import ValueEstimator
 from search.solve_job import SolveJob
 
@@ -82,7 +82,7 @@ class TrainJob():
             optimizer_checkpoint_path, weights_only=True, map_location=torch.device(self.device))
         self.optimizer.load_state_dict(optimizer_checkpoint)
 
-    def gen_plot_distances(self):
+    def gen_plot_distances(self, step):
         value_estimator = ValueEstimator(self.model, self.metric)
         all_distances = []
         for i, s in enumerate(self.test_trajectories):
@@ -91,10 +91,10 @@ class TrainJob():
 
         all_distances = np.array(all_distances).mean(axis=0)
         plt.plot(np.arange(len(all_distances)), all_distances)
-        self.loggers.log_figure(f'avg distances solved', 0, plt.gcf())
+        self.loggers.log_figure(f'avg distances solved', step, plt.gcf())
         plt.clf()
 
-    def gen_plot_0(self, test_trajectories):
+    def gen_plot_0(self, test_trajectories, step):
         TRAJECTORIES_TO_ANALYSE = 20
         last_n = 10
 
@@ -128,10 +128,10 @@ class TrainJob():
                        alpha=0.6, s=20, color=distinct_colors[i])
 
         plt.tight_layout()
-        self.loggers.log_figure("t-sne reps", 0, plt.gcf())
+        self.loggers.log_figure("t-sne reps", step, plt.gcf())
         plt.clf()
 
-    def gen_plot_1(self, test_trajectories):
+    def gen_plot_1(self, test_trajectories, step):
         for traj in test_trajectories:
             with torch.no_grad():
                 traj = traj.to(self.device)
@@ -149,10 +149,10 @@ class TrainJob():
                         c=np.arange(len(psi)), cmap='Reds')
 
         plt.gca().set_aspect('equal')
-        self.loggers.log_figure("All reps", 0, plt.gcf())
+        self.loggers.log_figure("All reps", step, plt.gcf())
         plt.clf()
 
-    def gen_plot_2(self, test_trajectories):
+    def gen_plot_2(self, test_trajectories, step):
         for i, s in enumerate(test_trajectories):
             if i == 4:
                 break
@@ -188,10 +188,10 @@ class TrainJob():
             plt.scatter(vec[:, 0], vec[:, 1], c=np.arange(len(vec)), cmap='Greys')
 
             plt.gca().set_aspect('equal')
-            self.loggers.log_figure(f'plot {i}', 0, plt.gcf())
+            self.loggers.log_figure(f'plot {i}', step, plt.gcf())
             plt.clf()
 
-    def gen_plot_monotonicity(self, test_trajectories):
+    def gen_plot_monotonicity(self, test_trajectories, step):
         value_estimator = ValueEstimator(self.model, self.metric)
         correlations = []
         for i, s in enumerate(test_trajectories):
@@ -199,19 +199,19 @@ class TrainJob():
             distances = value_estimator.get_solved_distance_batch(s, s[-1]).to('cpu')
             s = s.to('cpu')
             del s
-            correlation = spearmanr(distances.cpu(), np.arange(
+            correlation = -spearmanr(distances.cpu(), np.arange(
                 len(distances.cpu()))).statistic
             correlations.append(correlation)
             if i < 4:
 
-                self.loggers.log_scalar(f'correlation {i}', 0, correlation)
+                self.loggers.log_scalar(f'correlation {i}', step, correlation)
 
                 plt.plot(np.arange(distances.cpu().shape[-1]), distances.cpu())
 
-                self.loggers.log_figure(f'monotonicity {i}', 0, plt.gcf())
+                self.loggers.log_figure(f'monotonicity {i}', step, plt.gcf())
                 plt.clf()
 
-        self.loggers.log_scalar('correlation', 0, sum(correlations)/len(correlations))
+        self.loggers.log_scalar('correlation', step, sum(correlations)/len(correlations))
 
     def log_metrics(self, step):
         for name, value in self.metrics.items():
@@ -220,14 +220,14 @@ class TrainJob():
     def test_and_log(self, step):
         with torch.no_grad():
             self.gen_plot_monotonicity(
-                test_trajectories=self.test_trajectories)
-            self.gen_plot_0(test_trajectories=self.test_trajectories)
-            self.gen_plot_1(test_trajectories=self.test_trajectories)
-            self.gen_plot_2(test_trajectories=self.test_trajectories)
+                test_trajectories=self.test_trajectories, step=step)
+            self.gen_plot_0(test_trajectories=self.test_trajectories, step=step)
+            self.gen_plot_1(test_trajectories=self.test_trajectories, step=step)
+            self.gen_plot_2(test_trajectories=self.test_trajectories, step=step)
 
             for shuffles in self.search_shuffles:
                 eval_job = SolveJob(
-                    loggers=self.loggers, network=self.model, metric=self.metric, shuffles=shuffles)
+                    loggers=self.loggers, network=self.model, step=step, metric=self.metric, shuffles=shuffles)
                 eval_job.execute()
                 break
 
@@ -338,10 +338,10 @@ class TrainJobSameTraj(TrainJob):
 
 
 @gin.configurable
-class TrainJobSameTrajCRTR(TrainJob):
+class TrainJobOBBT(TrainJob):
     def __init__(self, train_path, test_path, n_test_traj, **kwargs):
         super().__init__(**kwargs)
-        self.dataset = DatasetSameTrajCRTR(path=train_path, device=self.device)
+        self.dataset = DatasetOBBT(path=train_path, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)

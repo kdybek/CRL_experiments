@@ -8,8 +8,11 @@ class AbsLogger(ABC):
     def log_scalar(self, name, value):
         raise NotImplementedError
 
-    @abstractmethod
     def log_property(self, name, value):
+        raise NotImplementedError
+
+    @abstractmethod
+    def log_figure(self, name, value):
         raise NotImplementedError
 
 
@@ -34,7 +37,9 @@ class StdoutLogger(AbsLogger):
             print(
                 "{:>6} | {:64}{:>9.3f}".format(step, name + ":", value), file=self.file
             )
-        
+
+    def log_property(self, name, value):
+        pass
 
     def log_figure(self, name, step, value):
         if self.output_dir is not None:
@@ -42,11 +47,24 @@ class StdoutLogger(AbsLogger):
                 os.makedirs(os.path.join(self.output_dir, str(step)))
             value.savefig(os.path.join(self.output_dir, str(step), f"{name}.png"))
 
-    def log_property(self, name, value):
-        pass        
 
-    def log_message(self, message):
-        print(message, file=self.file)
+class WandbLogger(AbsLogger):
+    """Logs to Weights and Biases."""
+
+    def __init__(self, project_name, run_name=None):
+        import wandb
+
+        self.wandb = wandb
+        self.wandb.init(project=project_name, name=run_name)
+
+    def log_scalar(self, name, step, value):
+        self.wandb.log({name: value}, step=step)
+
+    def log_property(self, name, value):
+        self.wandb.run.summary[name] = value
+
+    def log_figure(self, name, step, value):
+        self.wandb.log({name: self.wandb.Image(value)}, step=step)
 
 
 class Loggers:
@@ -64,18 +82,6 @@ class Loggers:
         for logger in self.loggers:
             logger.log_property(name, value)
 
-    def log_parameters(self, parameters):
-        for logger in self.loggers:
-            logger.log_parameters(parameters)
-    
-    def log_image(self, name, step, value):
-        for logger in self.loggers:
-            logger.log_image(name, step, value)
-
     def log_figure(self, name, step, value):
         for logger in self.loggers:
-            logger.log_figure(name, step, value) 
-    
-    def log_message(self, message):
-        for logger in self.loggers:
-            logger.log_message(message)
+            logger.log_figure(name, step, value)

@@ -296,7 +296,7 @@ class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
 
 
 @gin.configurable
-class DatasetSameTrajCRTR(ContrastiveDatasetDiffLen):
+class DatasetOBBT(ContrastiveDatasetDiffLen):
     def __init__(self, path, device='cpu'):
         super().__init__(path, device)
 

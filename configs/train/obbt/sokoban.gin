@@ -1,22 +1,22 @@
 run.seed = 0
-run.job_class = @TrainJobSameTrajCRTR
-TrainJobSameTrajCRTR.train_steps = 50000
-TrainJobSameTrajCRTR.test_interval = 50000
-TrainJobSameTrajCRTR.batch_size = 1
+run.job_class = @TrainJobOBBT
+TrainJobOBBT.train_steps = 50000
+TrainJobOBBT.test_interval = 50000
+TrainJobOBBT.batch_size = 1
 
-TrainJobSameTrajCRTR.metric = 'l2'
-TrainJobSameTrajCRTR.search_shuffles = [-1]
-TrainJobSameTrajCRTR.lr = 3e-4
-TrainJobSameTrajCRTR.train_path = 'training_datasets/sokoban/train'
-TrainJobSameTrajCRTR.test_path = 'training_datasets/sokoban/test'
-TrainJobSameTrajCRTR.n_test_traj = 100
-TrainJobSameTrajCRTR.model_type = @LNConvNet
+TrainJobOBBT.metric = 'l2'
+TrainJobOBBT.search_shuffles = [-1]
+TrainJobOBBT.lr = 3e-4
+TrainJobOBBT.train_path = 'training_datasets/sokoban/train'
+TrainJobOBBT.test_path = 'training_datasets/sokoban/test'
+TrainJobOBBT.n_test_traj = 100
+TrainJobOBBT.model_type = @LNConvNet
     LNConvNet.input_size = 7
     LNConvNet.repr_dim = 64
     LNConvNet.hidden_size = 64
     LNConvNet.depth = 8
 
-TrainJobSameTrajCRTR.eval_job_class = @SolveJob
+TrainJobOBBT.eval_job_class = @SolveJob
     SolveJob.solver_class = @BestFSSolver
         BestFSSolver.goal_builder_class = @TrivialPolicy
             TrivialPolicy.env = @CustomSokobanEnv

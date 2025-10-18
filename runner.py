@@ -46,6 +46,9 @@ def run(job_class, seed, output_dir):
 
     loggers = metric_logging.Loggers()
     loggers.register_logger(metric_logging.StdoutLogger(output_dir=output_dir))
+    loggers.register_logger(metric_logging.WandbLogger(
+        project_name="contrastive_rl", run_name=output_dir.split("/")[-1]
+    ))
 
     loggers.log_property('seed', seed)
     job = job_class(
