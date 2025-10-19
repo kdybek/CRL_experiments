@@ -80,7 +80,7 @@ class ContrastiveDatasetDiffLen():
 
 @gin.configurable
 class DatasetCRTR(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.1, repetition_rate=1, device='cpu'):
+    def __init__(self, path, gamma, repetition_rate, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.repetition_rate = repetition_rate
@@ -141,7 +141,7 @@ class DatasetCRTR(ContrastiveDatasetDiffLen):
 
 @gin.configurable
 class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=0.9, gamma_negative=0.4, n_negatives=32, device='cpu'):
+    def __init__(self, path, gamma, gamma_negative, n_negatives, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.gamma_negative = gamma_negative
@@ -225,7 +225,7 @@ class DatasetSameTrajGeom(ContrastiveDatasetDiffLen):
 
 @gin.configurable
 class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
-    def __init__(self, path, gamma=None, n_negatives=16, repetition_rate=16, device='cpu'):
+    def __init__(self, path, gamma, n_negatives, repetition_rate=1, device='cpu'):
         super().__init__(path, device)
         self.gamma = gamma
         self.n_negatives = n_negatives

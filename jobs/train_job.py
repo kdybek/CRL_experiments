@@ -33,8 +33,8 @@ class TrainJob():
         metric,
         search_shuffles,
         output_dir,
+        test_interval,
         metric_log_interval=100,
-        test_interval=50000,
         do_eval=True,
         tokenizer=tokenize_pair,
         eval_job_class=None,
@@ -211,7 +211,8 @@ class TrainJob():
                 self.loggers.log_figure(f'monotonicity {i}', step, plt.gcf())
                 plt.clf()
 
-        self.loggers.log_scalar('correlation', step, sum(correlations)/len(correlations))
+        self.loggers.log_scalar('correlation', step, sum(
+            correlations)/len(correlations))
 
     def log_metrics(self, step):
         for name, value in self.metrics.items():
@@ -234,15 +235,16 @@ class TrainJob():
 
 @gin.configurable
 class TrainJobCRTR(TrainJob):
-    def __init__(self, train_path, test_path, n_test_traj, repetition_rate, **kwargs):
+    def __init__(self, train_path, test_path, n_test_traj, gamma, repetition_rate, **kwargs):
         super().__init__(**kwargs)
         self.dataset = DatasetCRTR(
-            path=train_path, repetition_rate=repetition_rate, device=self.device)
+            path=train_path, gamma=gamma, repetition_rate=repetition_rate, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
 
-        self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
+        self.test_dataset = DatasetCRTR(
+            path=test_path, gamma=0.9, repetition_rate=1, device=self.device)
         self.test_dataloader = DataLoader(
             self.test_dataset, batch_size=self.batch_size)
 
@@ -284,19 +286,24 @@ class TrainJobCRTR(TrainJob):
 
 @gin.configurable
 class TrainJobSameTraj(TrainJob):
-    def __init__(self, train_path, dist, test_path, n_test_traj, **kwargs):
+    def __init__(self, train_path, dist, test_path, n_test_traj, gamma, n_negatives, gamma_negative=None, **kwargs):
         assert dist in ['geom', 'unif']
+        assert (dist == 'geom' and gamma_negative is not None) or (
+            dist == 'unif' and gamma_negative is None)
 
         super().__init__(**kwargs)
         if dist == 'geom':
-            self.dataset = DatasetSameTrajGeom(path=train_path, device=self.device)
+            self.dataset = DatasetSameTrajGeom(
+                path=train_path, gamma=gamma, gamma_negative=gamma_negative, n_negatives=n_negatives, device=self.device)
         else:
-            self.dataset = DatasetSameTrajUnif(path=train_path, device=self.device)
+            self.dataset = DatasetSameTrajUnif(
+                path=train_path, gamma=gamma, n_negatives=n_negatives, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
 
-        self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
+        self.test_dataset = DatasetCRTR(
+            path=test_path, gamma=0.9, repetition_rate=1, device=self.device)
         self.test_dataloader = DataLoader(
             self.test_dataset, batch_size=self.batch_size)
 
@@ -346,7 +353,8 @@ class TrainJobOBBT(TrainJob):
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
 
-        self.test_dataset = DatasetCRTR(path=test_path, device=self.device)
+        self.test_dataset = DatasetCRTR(
+            path=test_path, gamma=0.9, repetition_rate=1, device=self.device)
         self.test_dataloader = DataLoader(
             self.test_dataset, batch_size=self.batch_size)
 

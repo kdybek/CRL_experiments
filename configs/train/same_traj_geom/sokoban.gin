@@ -4,6 +4,9 @@ TrainJobSameTraj.train_steps = 50000
 TrainJobSameTraj.test_interval = 50000
 TrainJobSameTraj.batch_size = 128
 TrainJobSameTraj.dist = 'geom'
+TrainJobSameTraj.gamma = 0.9
+TrainJobSameTraj.gamma_negative = 0.3
+TrainJobSameTraj.n_negatives = 32
 
 TrainJobSameTraj.metric = 'l2'
 TrainJobSameTraj.search_shuffles = [-1]
@@ -30,7 +33,7 @@ TrainJobSameTraj.eval_job_class = @SolveJob
         BestFSSolver.value_estimator_class = @ValueEstimator
 
     SolveJob.n_jobs = 200
-    SolveJob.n_parallel_workers = 1
+    SolveJob.n_parallel_workers = 10
     SolveJob.batch_size = 200
     SolveJob.budget_checkpoints = [50, 100, 500, 1000]
     SolveJob.generate_problems = @gen_problems_sokoban.generate_problems_sokoban
