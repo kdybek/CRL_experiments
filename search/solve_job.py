@@ -60,8 +60,7 @@ class SolveJob():
         self.solution_lengths = []
         self.budget_solved = defaultdict(int)
         self.budget_exp_solved = defaultdict(int)
-        self.prefix = f"{self.shuffles}_shuffles_{
-            'search' if self.n_actions != 1 else 'argmax'}"
+        self.prefix = f"{self.shuffles}_shuffles_{'search' if self.n_actions != 1 else 'argmax'}"
 
         self.logged_solutions = 0
 

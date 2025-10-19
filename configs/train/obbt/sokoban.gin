@@ -1,7 +1,7 @@
 run.seed = 0
 run.job_class = @TrainJobOBBT
-TrainJobOBBT.train_steps = 50000
-TrainJobOBBT.test_interval = 50000
+TrainJobOBBT.train_steps = 5000
+TrainJobOBBT.test_interval = 5000
 TrainJobOBBT.batch_size = 1
 
 TrainJobOBBT.metric = 'l2'

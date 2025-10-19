@@ -199,8 +199,8 @@ class TrainJob():
             distances = value_estimator.get_solved_distance_batch(s, s[-1]).to('cpu')
             s = s.to('cpu')
             del s
-            correlation = -spearmanr(distances.cpu(), np.arange(
-                len(distances.cpu()))).statistic
+            correlation = spearmanr(distances.cpu(), np.arange(
+                len(distances.cpu()), 0, -1)).statistic
             correlations.append(correlation)
             if i < 4:
 

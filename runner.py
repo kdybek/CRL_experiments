@@ -91,4 +91,4 @@ if __name__ == "__main__":
         for binding in args.gin_bindings:
             f.write(f"{binding}\n")
 
-    run(output_dir=args.experiment_name)
+    run(exp_name=args.experiment_name)
