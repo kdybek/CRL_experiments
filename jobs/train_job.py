@@ -15,6 +15,8 @@ from search.solve_job import SolveJob
 
 import torch
 import sklearn
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 from scipy.stats import spearmanr
 
 
@@ -94,17 +96,19 @@ class TrainJob():
         self.loggers.log_figure(f'avg distances solved', step, plt.gcf())
         plt.clf()
 
-    def gen_plot_0(self, test_trajectories, step):
-        TRAJECTORIES_TO_ANALYSE = 20
-        last_n = 10
+    def gen_plot_TSNE(self, test_trajectories, step):
+        MAX_TRAJ_TO_ANALYSE = 20
+        TRAJ_LEN = 10
 
+        filtered_traj = [traj for traj in test_trajectories if len(traj) >= TRAJ_LEN]
+        selected_traj = filtered_traj[:MAX_TRAJ_TO_ANALYSE]
+        num_selected = len(selected_traj)
         all_embeddings = []
-        trajectory_labels = []
 
-        for i in range(TRAJECTORIES_TO_ANALYSE):
+        for i in range(num_selected):
             trajectory = test_trajectories[i]
             trajectory = trajectory.reshape(trajectory.shape[0], -1)
-            trajectory = trajectory[:min(len(trajectory), last_n)]
+            trajectory = trajectory[:TRAJ_LEN]
             embeddings_double = self.model(trajectory).detach().cpu().numpy()
             all_embeddings.append(embeddings_double)
 
@@ -122,9 +126,8 @@ class TrainJob():
                            '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854', '#ffd92f',
                            '#e5c494', '#b3b3b3', '#8dd3c7', '#bebada', '#fb8072'] * 2
 
-        for i in range(TRAJECTORIES_TO_ANALYSE):
-            mask = np.array(trajectory_labels) == i
-            ax.scatter(embeddings_2d[i*last_n:(i+1)*last_n, 0], embeddings_2d[i*last_n:(i+1)*last_n, 1],
+        for i in range(num_selected):
+            ax.scatter(embeddings_2d[i*TRAJ_LEN:(i+1)*TRAJ_LEN, 0], embeddings_2d[i*TRAJ_LEN:(i+1)*TRAJ_LEN, 1],
                        alpha=0.6, s=20, color=distinct_colors[i])
 
         plt.tight_layout()
@@ -191,6 +194,46 @@ class TrainJob():
             self.loggers.log_figure(f'plot {i}', step, plt.gcf())
             plt.clf()
 
+    def gen_plot_PCA(self, test_trajectories, step):
+        MAX_TRAJ_TO_ANALYSE = 20
+        TRAJ_LEN = 10
+
+        filtered_traj = [traj for traj in test_trajectories if len(traj) >= TRAJ_LEN]
+        selected_traj = filtered_traj[:MAX_TRAJ_TO_ANALYSE]
+        num_selected = len(selected_traj)
+        all_embeddings = []
+
+        for i in range(num_selected):
+            trajectory = test_trajectories[i]
+            trajectory = trajectory.reshape(trajectory.shape[0], -1)
+            trajectory = trajectory[:TRAJ_LEN]
+            embeddings_double = self.model(trajectory).detach().cpu().numpy()
+            all_embeddings.append(embeddings_double)
+
+        all_embeddings = np.concatenate(all_embeddings)
+
+        pca = PCA(n_components=2)
+
+        embeddings_2d = pca.fit_transform(all_embeddings)
+
+        exp_var = pca.explained_variance_ratio_[0] + pca.explained_variance_ratio_[1]
+        self.loggers.log_scalar("PCA explained variance", step, exp_var)
+
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+
+        distinct_colors = ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00',
+                           '#ffff33', '#a65628', '#f781bf', '#999999', '#66c2a5',
+                           '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854', '#ffd92f',
+                           '#e5c494', '#b3b3b3', '#8dd3c7', '#bebada', '#fb8072'] * 2
+
+        for i in range(num_selected):
+            ax.scatter(embeddings_2d[i*TRAJ_LEN:(i+1)*TRAJ_LEN, 0], embeddings_2d[i*TRAJ_LEN:(i+1)*TRAJ_LEN, 1],
+                       alpha=0.6, s=20, color=distinct_colors[i])
+
+        plt.tight_layout()
+        self.loggers.log_figure("PCA reps", step, plt.gcf())
+        plt.clf()
+
     def gen_plot_monotonicity(self, test_trajectories, step):
         value_estimator = ValueEstimator(self.model, self.metric)
         correlations = []
@@ -222,7 +265,8 @@ class TrainJob():
         with torch.no_grad():
             self.gen_plot_monotonicity(
                 test_trajectories=self.test_trajectories, step=step)
-            self.gen_plot_0(test_trajectories=self.test_trajectories, step=step)
+            self.gen_plot_TSNE(test_trajectories=self.test_trajectories, step=step)
+            self.gen_plot_PCA(test_trajectories=self.test_trajectories, step=step)
             self.gen_plot_1(test_trajectories=self.test_trajectories, step=step)
             self.gen_plot_2(test_trajectories=self.test_trajectories, step=step)
 
