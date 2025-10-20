@@ -3,6 +3,7 @@ run.job_class = @TrainJobCRTR
 TrainJobCRTR.train_steps = 50000
 TrainJobCRTR.test_interval = 50000
 TrainJobCRTR.batch_size = 512
+TrainJobCRTR.gamma = 0.9
 TrainJobCRTR.repetition_rate = 1
 
 TrainJobCRTR.metric = 'l2'
