@@ -432,7 +432,6 @@ class TrainJobOBBT(TrainJob):
 
     def execute(self):
         step = 1
-        big_loss = 0
         while step <= self.train_steps:
             for data in self.train_dataloader:
                 self.model.train()
@@ -444,7 +443,7 @@ class TrainJobOBBT(TrainJob):
                 # W = self._create_weight_matrix(traj_len, 0.99).to(self.device)
 
                 if self.mbbt:
-                    loss, self.metrics = contrastive_loss_same_trajectories(
+                    loss, self.metrics = contrastive_loss(
                         psi_0_concat, psi_T_concat, distance_fun=self.metric)
 
                 else:
