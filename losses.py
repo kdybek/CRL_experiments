@@ -32,15 +32,15 @@ def dropout_rows_inplace(pdist, dropout_rate):
 
 @gin.configurable
 def contrastive_loss(
-        psi_0, 
-        psi_T,  
-        distance_fun, 
-        normalize=False, 
-        tau=None, 
-        exclude_diagonal=False, 
-        eps=10e-8, 
-        loss_type='forward', 
-        weight_matrix=None, 
+        psi_0,
+        psi_T,
+        distance_fun,
+        normalize=False,
+        tau=None,
+        exclude_diagonal=False,
+        eps=10e-8,
+        loss_type='forward',
+        weight_matrix=None,
         dropout_rate=0.0
 ):
     if normalize:

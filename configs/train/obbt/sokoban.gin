@@ -2,7 +2,7 @@ run.seed = 0
 run.job_class = @TrainJobOBBT
 TrainJobOBBT.train_steps = 50000
 TrainJobOBBT.test_interval = 50000
-TrainJobOBBT.batch_size = 1
+TrainJobOBBT.batch_size = 512
 
 TrainJobOBBT.metric = 'l2'
 TrainJobOBBT.search_shuffles = [-1]

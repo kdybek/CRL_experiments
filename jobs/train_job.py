@@ -392,7 +392,8 @@ class TrainJobSameTraj(TrainJob):
 class TrainJobOBBT(TrainJob):
     def __init__(self, train_path, test_path, n_test_traj, mbbt=False, **kwargs):
         super().__init__(**kwargs)
-        self.dataset = DatasetOBBT(path=train_path, mbbt=mbbt, device=self.device)
+        self.dataset = DatasetOBBT(path=train_path, device=self.device)
+        self.mbbt = mbbt
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
@@ -404,6 +405,22 @@ class TrainJobOBBT(TrainJob):
 
         self.test_trajectories = [self.dataset._get_trajectory()
                                   for _ in range(n_test_traj)]
+
+    def obbt_loss(self, psi_0_concat, psi_T_concat, lens):
+        psi_0s = torch.split(psi_0_concat, lens, dim=0)
+        psi_Ts = torch.split(psi_T_concat, lens, dim=0)
+
+        loss = 0
+        for psi_0, psi_T in zip(psi_0s, psi_Ts, strict=True):
+            small_loss, _ = contrastive_loss(
+                psi_0, psi_T, distance_fun=self.metric, weight_matrix=None, dropout_rate=0.0)
+
+            small_loss = small_loss / psi_0.shape[0]
+            loss = loss + small_loss
+
+        self.metrics = {'loss': loss.item()}
+
+        return loss
 
     def _create_weight_matrix(self, traj_len, gamma):
         idx = torch.arange(traj_len - 1)
@@ -420,13 +437,18 @@ class TrainJobOBBT(TrainJob):
             for data in self.train_dataloader:
                 self.model.train()
 
-                states, goals = data
-                psi_0 = self.model(states)
-                psi_T = self.model(goals)
-                traj_len = states.shape[0] + 1
-                W = self._create_weight_matrix(traj_len, 0.99).to(self.device)
-                loss, self.metrics = contrastive_loss(
-                    psi_0, psi_T, distance_fun=self.metric, weight_matrix=None, dropout_rate=0.0)
+                states, goals, lens = data
+                psi_0_concat = self.model(states)
+                psi_T_concat = self.model(goals)
+                # traj_len = states.shape[0] + 1
+                # W = self._create_weight_matrix(traj_len, 0.99).to(self.device)
+
+                if self.mbbt:
+                    loss, self.metrics = contrastive_loss_same_trajectories(
+                        psi_0_concat, psi_T_concat, distance_fun=self.metric)
+
+                else:
+                    loss = self.obbt_loss(psi_0_concat, psi_T_concat, lens)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -445,4 +467,3 @@ class TrainJobOBBT(TrainJob):
                 step += 1
                 if step > self.train_steps:
                     break
-
