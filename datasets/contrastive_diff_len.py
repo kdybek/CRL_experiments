@@ -297,23 +297,43 @@ class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
 
 @gin.configurable
 class DatasetOBBT(ContrastiveDatasetDiffLen):
-    def __init__(self, path, device='cpu'):
+    def __init__(self, path, mbbt, device='cpu'):
         super().__init__(path, device)
+        self.mbbt = mbbt
 
-    def _get_batch(self, _):
+    def _get_batch(self, batch_size):
         with torch.no_grad():
-            trajs, lens = self._get_trajs(1)
+            all_states = []
+            all_goals = []
+            total_len = 0
 
-            assert len(trajs.shape) in [3, 4]
-            assert len(trajs) > 0
+            while total_len < batch_size:
+                trajs, lens = self._get_trajs(1)
 
-            trajs = trajs.to(self.device)
-            lens = lens.to(self.device)
+                assert len(trajs.shape) in [3, 4]
+                assert len(trajs) > 0
 
-            trajs = trajs.squeeze(0)
-            trajs = trajs[:lens[0]]
-            states = trajs[:-1]
-            goals = trajs[1:]
+                trajs = trajs.to(self.device)
+                lens = lens.to(self.device)
+
+                trajs = trajs.squeeze(0)
+                trajs = trajs[:lens[0]]
+
+                s = trajs[:-1]
+                g = trajs[1:]
+
+                all_states.append(s)
+                all_goals.append(g)
+                total_len += len(s)
+
+                if not self.mbbt:
+                    break
+
+            states = torch.cat(all_states, dim=0)
+            goals = torch.cat(all_goals, dim=0)
+
+            states = states[:batch_size]
+            goals = goals[:batch_size]
 
             if len(trajs.shape) == 3:
                 states = states.flatten(1)

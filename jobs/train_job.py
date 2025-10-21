@@ -390,9 +390,9 @@ class TrainJobSameTraj(TrainJob):
 
 @gin.configurable
 class TrainJobOBBT(TrainJob):
-    def __init__(self, train_path, test_path, n_test_traj, **kwargs):
+    def __init__(self, train_path, test_path, n_test_traj, mbbt=False, **kwargs):
         super().__init__(**kwargs)
-        self.dataset = DatasetOBBT(path=train_path, device=self.device)
+        self.dataset = DatasetOBBT(path=train_path, mbbt=mbbt, device=self.device)
 
         self.train_dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size)
@@ -428,14 +428,9 @@ class TrainJobOBBT(TrainJob):
                 loss, self.metrics = contrastive_loss(
                     psi_0, psi_T, distance_fun=self.metric, weight_matrix=None, dropout_rate=0.0)
 
-                big_loss = big_loss + loss
-
-                if step % self.batch_size == 0:
-                    big_loss = big_loss / self.batch_size
-                    self.optimizer.zero_grad()
-                    big_loss.backward()
-                    self.optimizer.step()
-                    big_loss = 0
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
 
                 if step % self.metric_log_interval == 0:
                     self.log_metrics(step)
@@ -451,4 +446,3 @@ class TrainJobOBBT(TrainJob):
                 if step > self.train_steps:
                     break
 
-        self.save_checkpoint('final')

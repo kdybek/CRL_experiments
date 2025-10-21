@@ -32,7 +32,7 @@ import envs.rubik.utils.rubik_solver_utils
 
 
 @gin.configurable
-def run(job_class, seed, exp_name):
+def run(job_class, seed, exp_name, wandb=False):
     random.seed(seed)
 
     np.random.seed(seed)
@@ -46,9 +46,10 @@ def run(job_class, seed, exp_name):
 
     loggers = metric_logging.Loggers()
     loggers.register_logger(metric_logging.StdoutLogger())
-    loggers.register_logger(metric_logging.WandbLogger(
-        project_name="obbt", run_name=exp_name.split("/")[-1]
-    ))
+    if wandb:
+        loggers.register_logger(metric_logging.WandbLogger(
+            project_name="obbt", run_name=exp_name.split("/")[-1]
+        ))
 
     loggers.log_property('seed', seed)
     job = job_class(
