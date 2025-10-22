@@ -21,15 +21,6 @@ def contrastive_loss_same_trajectories(psi_0, psi_T, psi_R):
 
     return loss, metrics
 
-
-def dropout_rows_inplace(pdist, dropout_rate):
-    if dropout_rate > 0.0:
-        num_zero = int(dropout_rate * pdist.size(0))
-        indices = torch.randperm(pdist.size(0))[:num_zero]
-
-        pdist[indices] = 0
-
-
 @gin.configurable
 def contrastive_loss(
         psi_0,
@@ -40,8 +31,7 @@ def contrastive_loss(
         exclude_diagonal=False,
         eps=10e-8,
         loss_type='forward',
-        weight_matrix=None,
-        dropout_rate=0.0
+        weight_matrix=None
 ):
     if normalize:
         if distance_fun in ['l2', 'l22', 'dot']:
@@ -104,7 +94,6 @@ def contrastive_loss(
         l_unif = (torch.logsumexp(-pdist, dim=1) +
                   torch.logsumexp(-pdist.T, dim=1)) / 2.0
     elif loss_type == 'forward':
-        dropout_rows_inplace(pdist, dropout_rate)
         l_unif = torch.logsumexp(-pdist, dim=1)
     elif loss_type == 'backward':
         l_unif = torch.logsumexp(-pdist.T, dim=1)

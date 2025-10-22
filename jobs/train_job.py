@@ -413,7 +413,7 @@ class TrainJobOBBT(TrainJob):
         loss = 0
         for psi_0, psi_T in zip(psi_0s, psi_Ts, strict=True):
             small_loss, _ = contrastive_loss(
-                psi_0, psi_T, distance_fun=self.metric, weight_matrix=None, dropout_rate=0.0)
+                psi_0, psi_T, distance_fun=self.metric, weight_matrix=None)
 
             small_loss = small_loss / psi_0.shape[0]
             loss = loss + small_loss

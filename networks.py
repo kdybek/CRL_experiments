@@ -1,6 +1,6 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as f
-import torch 
 import gin
 
 
@@ -9,9 +9,10 @@ def small_init(layer, sd):
         nn.init.normal_(layer.weight, mean=0, std=sd)
         nn.init.zeros_(layer.bias)
 
+
 @gin.configurable
 class LNConvNet(nn.Module):
-    def __init__(self, input_size=144, hidden_size=128, repr_dim=64, depth=8, last_sd=None, baseline=False):
+    def __init__(self, input_size=144, hidden_size=128, repr_dim=64, depth=8, last_sd=None, baseline=False, dropout_p=0.0):
         super(LNConvNet, self).__init__()
         modules = []
         res = []
@@ -19,36 +20,39 @@ class LNConvNet(nn.Module):
         lns_res = []
         self.repr_dim = repr_dim
         self.input_size = input_size
+        self.dropout_p = dropout_p
         assert depth % 2 == 0, "We expect the depth to be divisible by 2"
-        self.input_layer = nn.Conv2d(in_channels=input_size, 
+
+        self.input_layer = nn.Conv2d(in_channels=input_size,
                                      out_channels=hidden_size,
-                                     kernel_size=(3,3),
-                                    stride=1,
-                                    padding=1)
+                                     kernel_size=(3, 3),
+                                     stride=1,
+                                     padding=1)
         self.first_ln = nn.BatchNorm2d(hidden_size)
+        self.dropout = nn.Dropout2d(p=dropout_p)
+
         for _ in range(depth // 2):
-            modules.append(nn.Conv2d(in_channels=hidden_size, 
+            modules.append(nn.Conv2d(in_channels=hidden_size,
                                      out_channels=hidden_size,
-                                     kernel_size=(3,3),
-                                    stride=1,
-                                    padding=1))
+                                     kernel_size=(3, 3),
+                                     stride=1,
+                                     padding=1))
             lns.append(nn.BatchNorm2d(hidden_size))
-        
+
         for _ in range(depth // 2):
-            res.append(nn.Conv2d(in_channels=hidden_size, 
-                                     out_channels=hidden_size,
-                                     kernel_size=(3,3),
-                                    stride=1,
-                                    padding=1))
+            res.append(nn.Conv2d(in_channels=hidden_size,
+                                 out_channels=hidden_size,
+                                 kernel_size=(3, 3),
+                                 stride=1,
+                                 padding=1))
             lns_res.append(nn.BatchNorm2d(hidden_size))
 
         self.output_layer = nn.Sequential(
-                            nn.AdaptiveAvgPool2d(1),
-                            nn.Flatten(),
-                            nn.Linear(
-            in_features=hidden_size, 
-            out_features=repr_dim              
-                                )) 
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(p=dropout_p),
+            nn.Linear(in_features=hidden_size, out_features=repr_dim)
+        )
 
         if last_sd is not None:
             small_init(self.output_layer, last_sd)
@@ -58,7 +62,6 @@ class LNConvNet(nn.Module):
         self.lns = nn.ModuleList(lns)
         self.lns_res = nn.ModuleList(lns_res)
         self.baseline = baseline
-
 
         for m in self.parameters():
             self.initialize_weights(m)
@@ -76,7 +79,8 @@ class LNConvNet(nn.Module):
     def forward(self, x):
         with torch.no_grad():
             def to_one_hot(arr, baseline=False):
-                result = torch.eye(self.input_size // 2 if baseline else self.input_size, device=arr.device)[arr.to(int)]
+                result = torch.eye(
+                    self.input_size // 2 if baseline else self.input_size, device=arr.device)[arr.to(int)]
                 return result
 
             def transform(x, baseline=False):
@@ -86,22 +90,21 @@ class LNConvNet(nn.Module):
                 else:
                     x = x.unsqueeze(-1)
                 x = x.transpose(2, 3).transpose(1, 2)
-
                 return x
 
             if self.baseline:
                 if len(x.split(x.shape[-1] // 2, dim=-1)) != 2:
-                    import pdb; pdb.set_trace()
-                    
+                    import pdb
+                    pdb.set_trace()
                 x, y = x.split(x.shape[-1] // 2, dim=-1)
                 y = transform(y, baseline=True)
                 x = transform(x, baseline=True)
                 x = torch.cat([x, y], dim=1)
-            
             else:
                 x = transform(x)
 
         x = f.relu(self.first_ln(self.input_layer(x)))
+        x = self.dropout(x)
 
         for module, res, ln, ln_res in zip(self.layers, self.res_layers, self.lns, self.lns_res):
             delta = f.relu(ln(module(x)))
@@ -110,7 +113,6 @@ class LNConvNet(nn.Module):
         psi = self.output_layer(x)
         return psi
 
-    
 
 @gin.configurable
 class LNDenseNet(nn.Module):
@@ -127,7 +129,7 @@ class LNDenseNet(nn.Module):
         for _ in range(depth // 2):
             modules.append(nn.Linear(hidden_size, hidden_size))
             lns.append(nn.LayerNorm(hidden_size))
-        
+
         for _ in range(depth // 2):
             res.append(nn.Linear(hidden_size, hidden_size))
             lns_res.append(nn.LayerNorm(hidden_size))
