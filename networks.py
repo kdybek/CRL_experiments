@@ -29,7 +29,6 @@ class LNConvNet(nn.Module):
                                      stride=1,
                                      padding=1)
         self.first_ln = nn.BatchNorm2d(hidden_size)
-        self.dropout = nn.Dropout2d(p=dropout_p)
 
         for _ in range(depth // 2):
             modules.append(nn.Conv2d(in_channels=hidden_size,
@@ -104,7 +103,6 @@ class LNConvNet(nn.Module):
                 x = transform(x)
 
         x = f.relu(self.first_ln(self.input_layer(x)))
-        x = self.dropout(x)
 
         for module, res, ln, ln_res in zip(self.layers, self.res_layers, self.lns, self.lns_res):
             delta = f.relu(ln(module(x)))

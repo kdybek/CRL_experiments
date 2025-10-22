@@ -30,7 +30,7 @@ def contrastive_loss(
         tau=None,
         exclude_diagonal=False,
         eps=10e-8,
-        loss_type='forward',
+        loss_type='symmetric',
         weight_matrix=None
 ):
     if normalize:
