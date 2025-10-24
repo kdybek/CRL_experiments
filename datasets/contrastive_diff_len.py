@@ -297,8 +297,9 @@ class DatasetSameTrajUnif(ContrastiveDatasetDiffLen):
 
 @gin.configurable
 class DatasetOBBT(ContrastiveDatasetDiffLen):
-    def __init__(self, path, device='cpu'):
+    def __init__(self, path, max_traj, device='cpu'):
         super().__init__(path, device)
+        self.max_traj = max_traj
 
     def _get_batch(self, batch_size):
         with torch.no_grad():
@@ -306,8 +307,9 @@ class DatasetOBBT(ContrastiveDatasetDiffLen):
             all_goals = []
             all_lens = []
             total_len = 0
+            traj_count = 0
 
-            while total_len < batch_size:
+            while total_len < batch_size and traj_count < self.max_traj:
                 trajs, lens = self._get_trajs(1)
 
                 assert len(trajs.shape) in [3, 4]
@@ -326,6 +328,7 @@ class DatasetOBBT(ContrastiveDatasetDiffLen):
                 all_goals.append(g)
                 all_lens.append(len(s))
                 total_len += len(s)
+                traj_count += 1
 
             states = torch.cat(all_states, dim=0)
             goals = torch.cat(all_goals, dim=0)

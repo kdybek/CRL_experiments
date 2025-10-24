@@ -390,9 +390,9 @@ class TrainJobSameTraj(TrainJob):
 
 @gin.configurable
 class TrainJobOBBT(TrainJob):
-    def __init__(self, train_path, test_path, n_test_traj, mbbt=False, tau=None, **kwargs):
+    def __init__(self, train_path, test_path, n_test_traj, mbbt=False, tau=None, max_traj=1000000, **kwargs):
         super().__init__(**kwargs)
-        self.dataset = DatasetOBBT(path=train_path, device=self.device)
+        self.dataset = DatasetOBBT(path=train_path, max_traj=max_traj, device=self.device)
         self.mbbt = mbbt
         self.tau = tau
 
