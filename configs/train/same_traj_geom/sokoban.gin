@@ -15,6 +15,10 @@ TrainJobSameTraj.train_path = 'training_datasets/sokoban/train'
 TrainJobSameTraj.test_path = 'training_datasets/sokoban/test'
 TrainJobSameTraj.n_test_traj = 100
 TrainJobSameTraj.model_type = @LNConvNet
+    LNConvNet.input_size=144
+    LNConvNet.hidden_size=128
+    LNConvNet.repr_dim=64
+    LNConvNet.depth=8
 
 TrainJobSameTraj.eval_job_class = @SolveJob
     SolveJob.solver_class = @BestFSSolver
